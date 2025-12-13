@@ -3,29 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leanttro | Powerhouse de Soluções Digitais</title>
+    <title>LEANTTRO | CRIAÇÃO DE SITES</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;700&family=Kanit:ital,wght@0,300;0,600;0,800;1,800&display=swap" rel="stylesheet">
 
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
+                        sans: ['Kanit', 'sans-serif'],
+                        mono: ['Chakra Petch', 'monospace'],
                     },
                     colors: {
-                        brand: {
-                            dark: '#0f172a',
-                            darker: '#020617',
-                            card: '#1e293b',
-                            accent: '#f97316', // Laranja Neon
-                            accentHover: '#ea580c',
-                            secondary: '#8b5cf6', // Roxo Neon
+                        ln: {
+                            neon: '#D2FF00',    // Lando Neon Yellow
+                            black: '#050505',   // Deepest Black
+                            carbon: '#111111',  // Carbon Fiber Gray
+                            gray: '#888888',
+                            white: '#FAFAFA'
+                        }
+                    },
+                    backgroundImage: {
+                        'grid-pattern': "linear-gradient(to right, #1a1a1a 1px, transparent 1px), linear-gradient(to bottom, #1a1a1a 1px, transparent 1px)",
+                    },
+                    animation: {
+                        'marquee': 'marquee 25s linear infinite',
+                    },
+                    keyframes: {
+                        marquee: {
+                            '0%': { transform: 'translateX(0%)' },
+                            '100%': { transform: 'translateX(-100%)' },
                         }
                     }
                 }
@@ -34,452 +44,538 @@
     </script>
 
     <style>
-        /* Estilos Globais e Utilitários */
         body {
-            background-color: #0f172a;
-            color: #f8fafc;
+            background-color: #050505;
+            color: #FAFAFA;
+            overflow-x: hidden;
         }
 
-        /* Scrollbar customizada */
+        /* Neon Glow Text */
+        .text-neon-glow {
+            text-shadow: 0 0 10px rgba(210, 255, 0, 0.4);
+        }
+
+        /* Custom Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #0f172a; 
+            background: #050505;
         }
         ::-webkit-scrollbar-thumb {
-            background: #334155; 
+            background: #333;
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #f97316; 
+            background: #D2FF00;
         }
 
-        /* Animação do Modal */
-        .modal-open {
-            opacity: 1;
-            pointer-events: auto;
-            transform: scale(1);
+        /* Card Hover Effect - Glitch Border */
+        .ln-card {
+            transition: all 0.3s ease;
+            border: 1px solid #222;
         }
-        .modal-closed {
-            opacity: 0;
-            pointer-events: none;
-            transform: scale(0.95);
+        .ln-card:hover {
+            border-color: #D2FF00;
+            transform: translateY(-4px);
+            box-shadow: 0 10px 40px -10px rgba(210, 255, 0, 0.15);
         }
-        
-        /* Checkbox Customizado */
+
+        /* Checkbox Customizado Neon */
         .custom-checkbox:checked {
-            background-color: #f97316;
-            border-color: #f97316;
+            background-color: #D2FF00;
+            border-color: #D2FF00;
+            background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='black' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
+        }
+
+        /* Animação da Seta de Detalhes */
+        .rotate-180 {
+            transform: rotate(180deg);
+        }
+        .details-content {
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+        .details-content.open {
+            max-height: 200px; /* Altura suficiente para o texto */
+            opacity: 1;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.1);
         }
     </style>
 </head>
-<body class="antialiased selection:bg-brand-accent selection:text-white">
+<body class="antialiased selection:bg-ln-neon selection:text-black">
 
-    <header class="fixed w-full z-50 bg-brand-dark/90 backdrop-blur-md border-b border-slate-800">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center h-20">
-                <div class="flex items-center">
-                    <span class="text-2xl font-bold tracking-tighter text-white">
-                        LEAN<span class="text-brand-accent">TTRO</span>.
-                    </span>
-                </div>
-                
-                <nav class="hidden md:flex space-x-8">
-                    <a href="#solucoes" class="text-slate-300 hover:text-brand-accent transition-colors text-sm font-medium">Soluções</a>
-                    <a href="#metodo" class="text-slate-300 hover:text-brand-accent transition-colors text-sm font-medium">O Método</a>
-                    <a href="#contato" class="text-slate-300 hover:text-brand-accent transition-colors text-sm font-medium">Contato</a>
-                </nav>
+    <div class="bg-ln-neon text-black font-mono text-xs font-bold uppercase py-2 overflow-hidden whitespace-nowrap border-b-2 border-black relative z-50">
+        <div class="inline-block animate-marquee">
+            /// CRIAÇÃO DE SITES /// LANDING PAGES QUE CONVERTEM /// LOJAS VIRTUAIS /// DESIGN DE ALTA PERFORMANCE /// ESTRATÉGIA DIGITAL /// 
+            /// CRIAÇÃO DE SITES /// LANDING PAGES QUE CONVERTEM /// LOJAS VIRTUAIS /// DESIGN DE ALTA PERFORMANCE /// ESTRATÉGIA DIGITAL /// 
+        </div>
+    </div>
 
-                <div class="hidden md:flex">
-                    <a href="#solucoes" class="px-5 py-2 text-sm font-bold text-white bg-brand-secondary hover:bg-violet-700 rounded-full transition-all shadow-lg shadow-violet-500/20">
-                        Área do Cliente
-                    </a>
-                </div>
-                
-                <div class="md:hidden text-white text-2xl">
-                    <i class="fa-solid fa-bars"></i>
-                </div>
+    <header class="fixed w-full z-40 bg-ln-black/90 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-[1400px] mx-auto px-6 h-20 flex justify-between items-center">
+            <a href="#" class="text-3xl font-black italic tracking-tighter text-white">
+                LEAN<span class="text-ln-neon">TTRO</span>.
+            </a>
+            
+            <nav class="hidden md:flex space-x-12">
+                <a href="#products" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ SERVIÇOS ]</a>
+                <a href="#tech" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ DIFERENCIAIS ]</a>
+            </nav>
+
+            <a href="#products" class="hidden md:block bg-white text-black hover:bg-ln-neon px-6 py-2 font-bold uppercase text-sm italic transform skew-x-[-10deg] transition-all">
+                <span class="transform skew-x-[10deg] inline-block">ÁREA DO CLIENTE</span>
+            </a>
+            
+            <div class="md:hidden text-white text-2xl">
+                <i class="fa-solid fa-bars-staggered"></i>
             </div>
         </div>
     </header>
 
-    <section class="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
-        <div class="absolute top-0 left-1/2 w-full -translate-x-1/2 h-full z-0 pointer-events-none">
-            <div class="absolute top-20 left-1/4 w-96 h-96 bg-brand-accent/20 rounded-full blur-3xl"></div>
-            <div class="absolute bottom-20 right-1/4 w-96 h-96 bg-brand-secondary/20 rounded-full blur-3xl"></div>
-        </div>
-
-        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <div class="inline-flex items-center px-3 py-1 rounded-full border border-brand-accent/30 bg-brand-accent/10 text-brand-accent text-xs font-bold mb-6 tracking-wide uppercase">
-                <span class="w-2 h-2 rounded-full bg-brand-accent mr-2 animate-pulse"></span>
-                Nova Leanttro 2.0
-            </div>
-            
-            <h1 class="text-5xl md:text-7xl font-bold text-white tracking-tight mb-6 leading-tight">
-                Seu Site não vende? <br class="hidden md:block" />
-                Eu transformo ele em <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-accent to-yellow-400">Máquina de Vendas</span>.
-            </h1>
-            
-            <p class="mt-4 text-xl text-slate-400 max-w-2xl mx-auto mb-10">
-                Pare de pagar por sites estáticos. Tenha um ecossistema digital com Backend Python, Automação N8N e Inteligência Artificial integrados.
-            </p>
-
-            <div class="flex flex-col sm:flex-row justify-center gap-4">
-                <a href="#solucoes" class="px-8 py-4 text-lg font-bold text-white bg-brand-accent hover:bg-brand-accentHover rounded-lg transition-all shadow-lg shadow-orange-500/25 transform hover:-translate-y-1">
-                    Ver Pacotes & Preços
-                </a>
-                <a href="https://wa.me/" target="_blank" class="px-8 py-4 text-lg font-bold text-slate-300 border border-slate-700 hover:border-white hover:text-white rounded-lg transition-all">
-                    Falar com Especialista
-                </a>
-            </div>
-
-            <div class="mt-16 pt-8 border-t border-slate-800/50 flex flex-wrap justify-center gap-8 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
-                <i class="fa-brands fa-python text-3xl hover:text-blue-400" title="Python"></i>
-                <i class="fa-brands fa-docker text-3xl hover:text-blue-600" title="Docker"></i>
-                <i class="fa-solid fa-robot text-3xl hover:text-brand-secondary" title="Artificial Intelligence"></i>
-                <i class="fa-brands fa-aws text-3xl hover:text-yellow-500" title="Cloud"></i>
-                <i class="fa-solid fa-bolt text-3xl hover:text-yellow-400" title="Automation"></i>
-            </div>
-        </div>
-    </section>
-
-    <section id="solucoes" class="py-20 bg-brand-darker">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center mb-16">
-                <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Escolha sua Solução</h2>
-                <p class="text-slate-400">Selecione uma vertical para configurar seu orçamento em tempo real.</p>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                
-                <div class="group relative bg-brand-card border border-slate-800 rounded-2xl p-6 hover:border-brand-accent/50 transition-all hover:shadow-2xl hover:shadow-brand-accent/10 flex flex-col">
-                    <div class="absolute top-0 right-0 bg-brand-accent/10 text-brand-accent text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">B2B Local</div>
-                    <div class="w-14 h-14 bg-slate-800 rounded-lg flex items-center justify-center mb-6 text-brand-accent text-2xl group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-laptop-code"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Presença Digital</h3>
-                    <p class="text-sm text-slate-400 mb-4 flex-grow">Para advogados, clínicas e logística. Site ultra-rápido com backend de captação.</p>
-                    <div class="text-2xl font-bold text-white mb-6">R$ 499 <span class="text-xs font-normal text-slate-500">setup base</span></div>
-                    <ul class="text-sm text-slate-300 space-y-2 mb-8">
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Alta Performance</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Backend Python</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Alerta no WhatsApp</li>
-                    </ul>
-                    <button onclick="openConfigurator('presenca')" class="w-full py-3 bg-slate-700 hover:bg-brand-accent text-white font-bold rounded-lg transition-colors">
-                        Configurar <i class="fa-solid fa-arrow-right ml-2"></i>
-                    </button>
-                </div>
-
-                <div class="group relative bg-brand-card border border-slate-800 rounded-2xl p-6 hover:border-purple-500/50 transition-all hover:shadow-2xl hover:shadow-purple-500/10 flex flex-col">
-                    <div class="absolute top-0 right-0 bg-purple-500/10 text-purple-400 text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">Varejo</div>
-                    <div class="w-14 h-14 bg-slate-800 rounded-lg flex items-center justify-center mb-6 text-purple-400 text-2xl group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-shop"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Loja Virtual</h3>
-                    <p class="text-sm text-slate-400 mb-4 flex-grow">Sua loja própria sem taxas de plataforma. Checkout transparente e painel admin.</p>
-                    <div class="text-2xl font-bold text-white mb-6">R$ 999 <span class="text-xs font-normal text-slate-500">setup base</span></div>
-                    <ul class="text-sm text-slate-300 space-y-2 mb-8">
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Sem taxas %</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Painel Admin</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Mercado Pago</li>
-                    </ul>
-                    <button onclick="openConfigurator('ecommerce')" class="w-full py-3 bg-slate-700 hover:bg-purple-600 text-white font-bold rounded-lg transition-colors">
-                        Configurar <i class="fa-solid fa-arrow-right ml-2"></i>
-                    </button>
-                </div>
-
-                <div class="group relative bg-brand-card border border-slate-800 rounded-2xl p-6 hover:border-pink-500/50 transition-all hover:shadow-2xl hover:shadow-pink-500/10 flex flex-col">
-                    <div class="absolute top-0 right-0 bg-pink-500/10 text-pink-400 text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">B2C</div>
-                    <div class="w-14 h-14 bg-slate-800 rounded-lg flex items-center justify-center mb-6 text-pink-400 text-2xl group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-champagne-glasses"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Eventos & Festas</h3>
-                    <p class="text-sm text-slate-400 mb-4 flex-grow">Site para casamentos ou festas com gestão financeira de presentes via PIX.</p>
-                    <div class="text-2xl font-bold text-white mb-6">R$ 399 <span class="text-xs font-normal text-slate-500">setup base</span></div>
-                    <ul class="text-sm text-slate-300 space-y-2 mb-8">
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Lista de Presentes ($)</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> RSVP Digital</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Tema Personalizado</li>
-                    </ul>
-                    <button onclick="openConfigurator('eventos')" class="w-full py-3 bg-slate-700 hover:bg-pink-600 text-white font-bold rounded-lg transition-colors">
-                        Configurar <i class="fa-solid fa-arrow-right ml-2"></i>
-                    </button>
-                </div>
-
-                <div class="group relative bg-brand-card border border-slate-800 rounded-2xl p-6 hover:border-blue-500/50 transition-all hover:shadow-2xl hover:shadow-blue-500/10 flex flex-col">
-                    <div class="absolute top-0 right-0 bg-blue-500/10 text-blue-400 text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">Enterprise</div>
-                    <div class="w-14 h-14 bg-slate-800 rounded-lg flex items-center justify-center mb-6 text-blue-400 text-2xl group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-building"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-2">Soluções Corp</h3>
-                    <p class="text-sm text-slate-400 mb-4 flex-grow">Automação de processos complexos, análise de dados e tradução simultânea.</p>
-                    <div class="text-2xl font-bold text-white mb-6">R$ 1.500 <span class="text-xs font-normal text-slate-500">setup base</span></div>
-                    <ul class="text-sm text-slate-300 space-y-2 mb-8">
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> N8N Workflows</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> IA Generativa (RAG)</li>
-                        <li><i class="fa-solid fa-check text-green-500 mr-2"></i> Dashboards</li>
-                    </ul>
-                    <button onclick="openConfigurator('corp')" class="w-full py-3 bg-slate-700 hover:bg-blue-600 text-white font-bold rounded-lg transition-colors">
-                        Configurar <i class="fa-solid fa-arrow-right ml-2"></i>
-                    </button>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <div id="productModal" class="fixed inset-0 z-[100] hidden items-center justify-center">
-        <div onclick="closeModal()" class="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity"></div>
+    <section class="relative min-h-screen flex items-center pt-20 overflow-hidden bg-ln-black bg-grid-pattern bg-[length:40px_40px]">
+        <div class="absolute inset-0 bg-gradient-to-b from-transparent via-ln-black/50 to-ln-black pointer-events-none"></div>
         
-        <div class="relative bg-slate-900 border border-slate-700 w-full max-w-4xl mx-4 rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
+        <div class="max-w-[1400px] mx-auto px-6 grid md:grid-cols-2 gap-12 items-center relative z-10">
+            <div>
+                <div class="inline-flex items-center gap-2 border border-ln-neon/30 bg-ln-neon/5 rounded px-3 py-1 mb-6">
+                    <span class="w-2 h-2 bg-ln-neon rounded-full animate-pulse"></span>
+                    <span class="text-ln-neon font-mono text-xs font-bold uppercase">AGÊNCIA ESPECIALIZADA</span>
+                </div>
+                
+                <h1 class="text-6xl md:text-8xl font-black uppercase leading-[0.9] italic mb-6">
+                    CRIAÇÃO DE <br>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">SITES E</span> <br>
+                    <span class="text-ln-neon text-neon-glow">SOFTWARES</span>
+                </h1>
+                
+                <p class="text-gray-400 font-mono text-lg max-w-lg mb-10 border-l-2 border-ln-neon pl-4">
+                    Não entregamos apenas código. Construímos a infraestrutura digital que sua marca merece para dominar o mercado.
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <a href="#products" class="bg-ln-neon text-black px-8 py-4 font-black uppercase italic text-lg hover:bg-white transition-colors text-center transform skew-x-[-10deg]">
+                        <span class="transform skew-x-[10deg] inline-block">VER PACOTES</span>
+                    </a>
+                    <a href="https://wa.me/" class="border border-white text-white px-8 py-4 font-bold uppercase text-lg hover:bg-white hover:text-black transition-colors text-center transform skew-x-[-10deg]">
+                        <span class="transform skew-x-[10deg] inline-block">FALAR COM CONSULTOR</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="relative hidden md:block h-full">
+                <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-ln-neon/20 rounded-full blur-[120px]"></div>
+                <div class="relative border border-white/10 bg-ln-carbon/50 backdrop-blur p-8 transform rotate-3 hover:rotate-0 transition-all duration-500">
+                    <div class="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
+                        <span class="font-mono text-xs text-ln-neon">/// PROJETOS_ENTREGUES</span>
+                        <span class="font-mono text-xs text-green-500">QUALIDADE MÁXIMA</span>
+                    </div>
+                    <div class="space-y-4 font-mono text-sm text-gray-300">
+                        <div class="flex justify-between"><span>> DESIGN</span> <span class="text-white">PREMIUM & EXCLUSIVO</span></div>
+                        <div class="flex justify-between"><span>> TECNOLOGIA</span> <span class="text-white">PYTHON & REACT</span></div>
+                        <div class="flex justify-between"><span>> PRAZO</span> <span class="text-white">ENTREGA ÁGIL</span></div>
+                        <div class="flex justify-between"><span>> SUPORTE</span> <span class="text-ln-neon">HUMANIZADO</span></div>
+                    </div>
+                    <div class="mt-8 flex items-end space-x-2 h-20">
+                        <div class="w-1/5 bg-gray-800 h-[40%] hover:bg-ln-neon transition-colors"></div>
+                        <div class="w-1/5 bg-gray-800 h-[70%] hover:bg-ln-neon transition-colors"></div>
+                        <div class="w-1/5 bg-gray-800 h-[50%] hover:bg-ln-neon transition-colors"></div>
+                        <div class="w-1/5 bg-gray-800 h-[90%] bg-ln-neon shadow-[0_0_15px_#D2FF00]"></div>
+                        <div class="w-1/5 bg-gray-800 h-[60%] hover:bg-ln-neon transition-colors"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="products" class="py-24 bg-ln-black relative">
+        <div class="max-w-[1600px] mx-auto px-6">
+            <div class="flex justify-between items-end mb-16">
+                <div>
+                    <h2 class="text-4xl md:text-6xl font-black italic uppercase text-white mb-2">CONSTRUÇÃO <span class="text-gray-700">DE SITES</span></h2>
+                    <p class="font-mono text-ln-neon">// ESCOLHA SEU PROJETO</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                
+                <div class="ln-card bg-ln-carbon p-8 relative overflow-hidden group cursor-pointer" onclick="openConfigurator('presenca')">
+                    <div class="absolute top-0 right-0 p-4 font-mono text-xs text-gray-600 group-hover:text-ln-neon transition-colors">01 // B2B</div>
+                    <div class="h-12 w-12 bg-white text-black flex items-center justify-center text-2xl mb-6 skew-x-[-10deg]">
+                        <i class="fa-solid fa-laptop-code transform skew-x-[10deg]"></i>
+                    </div>
+                    <h3 class="text-2xl font-black italic uppercase mb-2">Landing Pages</h3>
+                    <p class="font-mono text-gray-400 text-xs mb-8">Páginas de alta conversão para advogados, clínicas e profissionais. Design focado em leads.</p>
+                    <div class="border-t border-white/10 pt-6 flex justify-between items-end">
+                        <div class="font-mono text-xl font-bold text-white">R$ 499</div>
+                        <div class="text-xs font-mono bg-ln-neon text-black px-2 py-1 font-bold">CRIAÇÃO</div>
+                    </div>
+                </div>
+
+                <div class="ln-card bg-ln-carbon p-8 relative overflow-hidden group cursor-pointer border-t-4 border-t-ln-neon" onclick="openConfigurator('ecommerce')">
+                    <div class="absolute top-0 right-0 p-4 font-mono text-xs text-ln-neon font-bold">02 // VAREJO</div>
+                    <div class="h-12 w-12 bg-ln-neon text-black flex items-center justify-center text-2xl mb-6 skew-x-[-10deg] shadow-[0_0_15px_#D2FF00]">
+                        <i class="fa-solid fa-shop transform skew-x-[10deg]"></i>
+                    </div>
+                    <h3 class="text-2xl font-black italic uppercase mb-2">Loja Virtual</h3>
+                    <p class="font-mono text-gray-400 text-xs mb-8">Criação de e-commerce completo. Sem taxas de venda, checkout transparente e painel exclusivo.</p>
+                    <div class="border-t border-white/10 pt-6 flex justify-between items-end">
+                        <div class="font-mono text-xl font-bold text-white">R$ 999</div>
+                        <div class="text-xs font-mono bg-white text-black px-2 py-1 font-bold">CRIAÇÃO</div>
+                    </div>
+                </div>
+
+                <div class="ln-card bg-ln-carbon p-8 relative overflow-hidden group cursor-pointer" onclick="openConfigurator('eventos')">
+                    <div class="absolute top-0 right-0 p-4 font-mono text-xs text-gray-600 group-hover:text-ln-neon transition-colors">03 // B2C</div>
+                    <div class="h-12 w-12 bg-white text-black flex items-center justify-center text-2xl mb-6 skew-x-[-10deg]">
+                        <i class="fa-solid fa-champagne-glasses transform skew-x-[10deg]"></i>
+                    </div>
+                    <h3 class="text-2xl font-black italic uppercase mb-2">Eventos & Festas</h3>
+                    <p class="font-mono text-gray-400 text-xs mb-8">Sites personalizados para casamentos e festas. Lista de presentes PIX e Confirmação de Presença.</p>
+                    <div class="border-t border-white/10 pt-6 flex justify-between items-end">
+                        <div class="font-mono text-xl font-bold text-white">R$ 399</div>
+                        <div class="text-xs font-mono bg-gray-700 text-white px-2 py-1 font-bold">CRIAÇÃO</div>
+                    </div>
+                </div>
+
+                <div class="ln-card bg-ln-carbon p-8 relative overflow-hidden group cursor-pointer" onclick="openConfigurator('corp')">
+                    <div class="absolute top-0 right-0 p-4 font-mono text-xs text-gray-600 group-hover:text-ln-neon transition-colors">04 // CORP</div>
+                    <div class="h-12 w-12 bg-white text-black flex items-center justify-center text-2xl mb-6 skew-x-[-10deg]">
+                        <i class="fa-solid fa-building transform skew-x-[10deg]"></i>
+                    </div>
+                    <h3 class="text-2xl font-black italic uppercase mb-2">Projetos Custom</h3>
+                    <p class="font-mono text-gray-400 text-xs mb-8">Desenvolvimento sob medida. Dashboards, Automação de Processos e Inteligência Artificial.</p>
+                    <div class="border-t border-white/10 pt-6 flex justify-between items-end">
+                        <div class="font-mono text-xl font-bold text-white">R$ 1.500</div>
+                        <div class="text-xs font-mono bg-gray-700 text-white px-2 py-1 font-bold">SETUP</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-black border-t border-white/10 py-12">
+        <div class="max-w-[1400px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-2xl font-black italic tracking-tighter text-gray-500">
+                LEAN<span class="text-ln-neon">TTRO</span>.
+            </div>
+            <div class="font-mono text-xs text-gray-600 uppercase">
+                // LEANTTRO ENGINEERING <br>
+                // SÃO PAULO, SP
+            </div>
+            <div class="flex space-x-6">
+                <a href="#" class="text-gray-500 hover:text-ln-neon"><i class="fa-brands fa-github text-xl"></i></a>
+                <a href="#" class="text-gray-500 hover:text-ln-neon"><i class="fa-brands fa-whatsapp text-xl"></i></a>
+                <a href="#" class="text-gray-500 hover:text-ln-neon"><i class="fa-brands fa-instagram text-xl"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <div id="productModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+        <div onclick="closeModal()" class="absolute inset-0 bg-black/90 backdrop-blur-sm"></div>
+        
+        <div class="relative bg-ln-black border border-white/20 w-full max-w-5xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col md:flex-row overflow-hidden animate-fade-in">
             
-            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white z-10">
-                <i class="fa-solid fa-xmark text-2xl"></i>
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-white hover:text-ln-neon z-20 font-mono text-sm bg-black px-2 border border-white/20">
+                [X] FECHAR
             </button>
 
-            <div class="w-full md:w-2/5 bg-slate-800 p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r border-slate-700">
-                <div>
-                    <div id="modalIcon" class="text-4xl text-brand-accent mb-4"></div>
-                    <h3 id="modalTitle" class="text-2xl font-bold text-white mb-2">Titulo Produto</h3>
-                    <p id="modalDesc" class="text-sm text-slate-400 leading-relaxed">Descrição base do produto.</p>
-                    
-                    <div class="mt-8 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
-                        <span class="text-xs text-slate-500 uppercase font-bold">Incluso no Pacote Base:</span>
-                        <ul id="modalFeatures" class="mt-3 space-y-2 text-sm text-slate-300">
-                            </ul>
-                    </div>
+            <div class="w-full md:w-5/12 bg-[#080808] p-10 flex flex-col justify-between border-r border-white/10 relative overflow-hidden">
+                <div class="absolute inset-0 bg-grid-pattern opacity-20"></div>
+                
+                <div class="relative z-10">
+                    <div class="font-mono text-ln-neon text-xs font-bold mb-4">// CONFIGURAÇÃO DO PROJETO</div>
+                    <div id="modalIconContainer" class="text-6xl text-white mb-6"></div>
+                    <h2 id="modalTitle" class="text-4xl font-black italic uppercase text-white mb-4 leading-none">TITULO</h2>
+                    <p id="modalDesc" class="font-mono text-gray-400 text-sm leading-relaxed mb-6">Descrição vai aqui.</p>
                 </div>
-                <div class="mt-6">
-                    <p class="text-xs text-slate-500">Valor Base:</p>
-                    <p id="modalBasePrice" class="text-2xl font-bold text-white">R$ 0,00</p>
+
+                <div class="relative z-10 border-t border-white/10 pt-6">
+                    <div class="font-mono text-xs text-gray-500 mb-1">VALOR DE CRIAÇÃO (SETUP)</div>
+                    <div id="modalBasePrice" class="text-4xl font-bold text-white">R$ 0,00</div>
                 </div>
             </div>
 
-            <div class="w-full md:w-3/5 p-8 flex flex-col bg-slate-900">
-                <h4 class="text-lg font-bold text-white mb-4 border-b border-slate-800 pb-2">
-                    <i class="fa-solid fa-sliders text-brand-accent mr-2"></i> Personalize sua Solução
-                </h4>
-                
-                <div id="modalOptions" class="flex-grow overflow-y-auto space-y-3 pr-2 mb-6 custom-scrollbar">
+            <div class="w-full md:w-7/12 p-10 bg-ln-black flex flex-col">
+                <div class="font-mono text-xs text-gray-500 mb-6 uppercase border-b border-white/10 pb-2">
+                    // ADICIONAIS & DETALHES
+                </div>
+
+                <div id="modalOptions" class="flex-grow overflow-y-auto pr-2 space-y-3 custom-scrollbar">
                     </div>
 
-                <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-slate-400 text-sm">Investimento Único (Setup):</span>
-                        <span id="displayTotalSetup" class="text-xl font-bold text-white">R$ 0,00</span>
+                <div class="mt-8 bg-[#0a0a0a] border border-white/10 p-6">
+                    <div class="flex justify-between items-end mb-2">
+                        <span class="font-mono text-xs text-gray-500">INVESTIMENTO ÚNICO</span>
+                        <span id="displayTotalSetup" class="font-mono text-2xl font-bold text-white">R$ 0,00</span>
                     </div>
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="text-slate-400 text-sm">Mensalidade (Manutenção):</span>
-                        <span id="displayTotalMensal" class="text-xl font-bold text-brand-accent">R$ 0,00/mês</span>
+                    <div class="flex justify-between items-end mb-6">
+                        <span class="font-mono text-xs text-gray-500">MANUTENÇÃO MENSAL</span>
+                        <span id="displayTotalMensal" class="font-mono text-sm font-bold text-ln-neon">R$ 0,00/mês</span>
                     </div>
                     
-                    <button onclick="finalizarPedido()" class="w-full py-4 bg-brand-accent hover:bg-brand-accentHover text-white font-bold rounded-lg text-lg shadow-lg shadow-orange-500/20 transition-all transform hover:scale-[1.02]">
-                        CONTRATAR AGORA <i class="fa-solid fa-check ml-2"></i>
+                    <button onclick="finalizarPedido()" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-lg hover:bg-white transition-all transform skew-x-[-10deg]">
+                        <span class="transform skew-x-[10deg] inline-block">SOLICITAR CONTRATO</span>
                     </button>
-                    <p class="text-center text-xs text-slate-500 mt-3">
-                        <i class="fa-solid fa-lock mr-1"></i> Checkout Seguro via Mercado Pago
-                    </p>
+                    <p class="text-center text-[10px] font-mono text-gray-600 mt-2">PAGAMENTO SEGURO & GARANTIA DE ENTREGA</p>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // === CATÁLOGO DE DADOS (DATABASE SIMULADO) ===
+        // === CATÁLOGO COM TEXTOS SEDUTORES ===
         const catalog = {
             'presenca': {
-                title: "Presença Digital B2B",
-                desc: "Site institucional de alta performance com foco em captura de leads. Ideal para prestadores de serviço.",
+                title: "Landing Page",
                 icon: '<i class="fa-solid fa-laptop-code"></i>',
+                desc: "Site de página única (One-Page) focado em conversão. Ideal para campanhas de Google Ads e apresentação profissional.",
                 baseSetup: 499,
                 baseMonthly: 49,
-                features: ["Hospedagem Inclusa", "Domínio Grátis (1 ano)", "Backend de Formulário", "Design Responsivo"],
                 upsells: [
-                    { id: 'chat_triagem', label: 'Chatbot de Triagem (Evolution API)', priceSetup: 150, priceMonthly: 50, badge: 'IA' },
-                    { id: 'blog_seo', label: 'Módulo de Blog (SEO Otimizado)', priceSetup: 200, priceMonthly: 0 },
-                    { id: 'admin_panel', label: 'Painel Admin (Editar Textos)', priceSetup: 300, priceMonthly: 20 },
-                    { id: 'logo_design', label: 'Criação de Identidade Visual', priceSetup: 250, priceMonthly: 0 }
+                    { 
+                        id: 'chat_triagem', 
+                        label: 'Chatbot de Atendimento', 
+                        priceSetup: 150, 
+                        priceMonthly: 50,
+                        details: "Não perca nenhum cliente. Nosso Chatbot IA atende 24h por dia, responde dúvidas frequentes e segura o lead enquanto você dorme ou está ocupado."
+                    },
+                    { 
+                        id: 'blog_seo', 
+                        label: 'Blog para SEO', 
+                        priceSetup: 200, 
+                        priceMonthly: 0,
+                        details: "Domine o Google. Uma estrutura de blog otimizada que permite postar conteúdo e ser encontrado organicamente por quem procura seus serviços."
+                    },
+                    { 
+                        id: 'admin_panel', 
+                        label: 'Painel Editor de Texto', 
+                        priceSetup: 300, 
+                        priceMonthly: 20,
+                        details: "Liberdade total. Mude textos, preços e fotos do seu site quando quiser, sem depender de programador e sem saber uma linha de código."
+                    },
+                    { 
+                        id: 'logo_design', 
+                        label: 'Criação de Logo', 
+                        priceSetup: 250, 
+                        priceMonthly: 0,
+                        details: "Uma marca inesquecível. Nossos designers criam uma identidade visual profissional que passa autoridade imediata para quem visita seu site."
+                    }
                 ]
             },
             'ecommerce': {
-                title: "Loja Virtual Proprietária",
-                desc: "Plataforma de vendas completa, sem comissão por venda. Controle total do seu negócio.",
+                title: "Loja Virtual",
                 icon: '<i class="fa-solid fa-shop"></i>',
+                desc: "Desenvolvimento de e-commerce completo. Inclui cadastro de produtos, integração de pagamento e frete.",
                 baseSetup: 999,
                 baseMonthly: 99,
-                features: ["Até 50 Produtos", "Checkout Transparente", "Integração Correios", "Painel Administrativo"],
                 upsells: [
-                    { id: 'bot_vendedor', label: 'Vendedor IA (RAG) - Tira Dúvidas', priceSetup: 500, priceMonthly: 150, badge: 'HOT' },
-                    { id: 'ml_integ', label: 'Integração Mercado Livre', priceSetup: 300, priceMonthly: 0 },
-                    { id: 'pixel_fb', label: 'Configuração Pixel Facebook/Ads', priceSetup: 150, priceMonthly: 0 }
+                    { 
+                        id: 'bot_vendedor', 
+                        label: 'IA Vendedora (RAG)', 
+                        priceSetup: 500, 
+                        priceMonthly: 150,
+                        details: "Sua melhor vendedora. Uma IA treinada com SEU catálogo que sugere produtos, tira dúvidas técnicas e convence o cliente a fechar a compra na hora."
+                    },
+                    { 
+                        id: 'ml_integ', 
+                        label: 'Integração Mercado Livre', 
+                        priceSetup: 300, 
+                        priceMonthly: 0,
+                        details: "Venda em dobro. Sincronize seu estoque automaticamente. Se vender no site, baixa no Mercado Livre e vice-versa. Gestão centralizada."
+                    },
+                    { 
+                        id: 'pixel_fb', 
+                        label: 'Configuração de Pixel/Ads', 
+                        priceSetup: 150, 
+                        priceMonthly: 0,
+                        details: "Rastreio de elite. Saiba exatamente quem visitou, quem colocou no carrinho e quem comprou para criar anúncios letais no Facebook e Instagram."
+                    }
                 ]
             },
             'eventos': {
-                title: "Site de Eventos & RSVP",
-                desc: "A solução perfeita para casamentos e grandes festas. Receba presentes em dinheiro.",
+                title: "Site de Casamento",
                 icon: '<i class="fa-solid fa-champagne-glasses"></i>',
+                desc: "Criação de site para eventos com sistema de presentes em dinheiro (PIX) e confirmação de presença (RSVP).",
                 baseSetup: 399,
-                baseMonthly: 29, // Manutenção só até o evento
-                features: ["Lista de Presentes (PIX)", "Contagem Regressiva", "Mapa do Evento", "Galeria de Fotos"],
+                baseMonthly: 29,
                 upsells: [
-                    { id: 'concierge_ia', label: 'Concierge IA (Dúvidas no Whats)', priceSetup: 250, priceMonthly: 50, badge: 'IA' },
-                    { id: 'qrcode_mesa', label: 'Gerador de QR Codes de Mesa', priceSetup: 100, priceMonthly: 0 }
+                    { 
+                        id: 'concierge_ia', 
+                        label: 'Concierge IA (WhatsApp)', 
+                        priceSetup: 250, 
+                        priceMonthly: 50,
+                        details: "Seus convidados bem informados sem te incomodar. A IA responde sobre trajes, horários, localização e lista de presentes automaticamente no WhatsApp."
+                    },
+                    { 
+                        id: 'qrcode_mesa', 
+                        label: 'Artes QR Code de Mesa', 
+                        priceSetup: 100, 
+                        priceMonthly: 0,
+                        details: "Sofisticação e praticidade. Artes prontas para imprimir e colocar nas mesas, permitindo que convidados acessem o menu ou a lista de presentes pela câmera."
+                    }
                 ]
             },
             'corp': {
-                title: "Soluções Corporativas",
-                desc: "Automação de processos complexos usando N8N e Inteligência Artificial generativa.",
+                title: "Projetos Corp",
                 icon: '<i class="fa-solid fa-building"></i>',
+                desc: "Desenvolvimento de sistemas web complexos. Dashboards administrativos, APIs e automações customizadas.",
                 baseSetup: 1500,
                 baseMonthly: 299,
-                features: ["Consultoria de Processos", "Integração de APIs", "Dashboard de Dados", "SLA Garantido"],
                 upsells: [
-                    { id: 'traduzai', label: 'TraduzAI Corporativo (Chat Realtime)', priceSetup: 800, priceMonthly: 100 },
-                    { id: 'rh_auto', label: 'Automação de RH (Triagem CVs)', priceSetup: 1200, priceMonthly: 150 },
-                    { id: 'seo_prog', label: 'SEO Programático (1000 pgs)', priceSetup: 2000, priceMonthly: 200 }
+                    { 
+                        id: 'traduzai', 
+                        label: 'Chat Tradução Simultânea', 
+                        priceSetup: 800, 
+                        priceMonthly: 100,
+                        details: "Quebre barreiras globais. Um sistema de chat que traduz mensagens em tempo real, permitindo que sua equipe negocie com clientes de qualquer país."
+                    },
+                    { 
+                        id: 'rh_auto', 
+                        label: 'Automação de RH', 
+                        priceSetup: 1200, 
+                        priceMonthly: 150,
+                        details: "Filtre os melhores talentos. Uma IA que lê milhares de currículos, classifica candidatos e agenda entrevistas apenas com o top 1%."
+                    },
+                    { 
+                        id: 'seo_prog', 
+                        label: 'SEO Programático', 
+                        priceSetup: 2000, 
+                        priceMonthly: 200,
+                        details: "Escala massiva. Geração automática de milhares de páginas de aterrissagem otimizadas para dominar todas as variações de busca do seu nicho."
+                    }
                 ]
             }
         };
 
-        // Estado Atual
         let currentProduct = null;
         let currentSetup = 0;
         let currentMonthly = 0;
 
-        // Elementos DOM
         const modal = document.getElementById('productModal');
         const displaySetup = document.getElementById('displayTotalSetup');
         const displayMonthly = document.getElementById('displayTotalMensal');
 
-        // === FUNÇÕES ===
-
         function formatBRL(value) {
             return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        // Função para abrir/fechar detalhes
+        function toggleDetail(event, id) {
+            event.preventDefault(); // Evita marcar o checkbox
+            event.stopPropagation(); // Evita propagar clique
+            
+            const content = document.getElementById(`detail-${id}`);
+            const arrow = document.getElementById(`arrow-${id}`);
+            
+            if (content.classList.contains('open')) {
+                content.classList.remove('open');
+                arrow.classList.remove('rotate-180');
+            } else {
+                // Fecha outros abertos (opcional, para manter limpo)
+                document.querySelectorAll('.details-content').forEach(el => el.classList.remove('open'));
+                document.querySelectorAll('.fa-chevron-down').forEach(el => el.classList.remove('rotate-180'));
+                
+                content.classList.add('open');
+                arrow.classList.add('rotate-180');
+            }
         }
 
         function openConfigurator(productId) {
             currentProduct = catalog[productId];
             if (!currentProduct) return;
 
-            // 1. Popula Lado Esquerdo
             document.getElementById('modalTitle').innerText = currentProduct.title;
+            document.getElementById('modalIconContainer').innerHTML = currentProduct.icon;
             document.getElementById('modalDesc').innerText = currentProduct.desc;
-            document.getElementById('modalIcon').innerHTML = currentProduct.icon;
             document.getElementById('modalBasePrice').innerText = formatBRL(currentProduct.baseSetup);
-            
-            const featuresList = document.getElementById('modalFeatures');
-            featuresList.innerHTML = currentProduct.features.map(f => `<li><i class="fa-solid fa-check text-brand-secondary mr-2"></i>${f}</li>`).join('');
 
-            // 2. Popula Lado Direito (Checkboxes)
             const optionsContainer = document.getElementById('modalOptions');
-            optionsContainer.innerHTML = ''; // Limpa anteriores
+            optionsContainer.innerHTML = '';
 
             currentProduct.upsells.forEach(opt => {
-                const badgeHTML = opt.badge ? `<span class="ml-2 px-2 py-0.5 text-[10px] font-bold bg-brand-accent text-white rounded-full">${opt.badge}</span>` : '';
+                // ID único para controle
+                const uniqueId = opt.id; 
                 
                 const html = `
-                <label class="flex items-start p-3 rounded-lg border border-slate-700 bg-slate-800/50 hover:bg-slate-800 cursor-pointer transition-colors select-none group">
-                    <input type="checkbox" 
-                           class="custom-checkbox w-5 h-5 rounded border-slate-600 bg-slate-700 text-brand-accent focus:ring-brand-accent mt-1 mr-3 transition-all"
-                           data-setup="${opt.priceSetup}" 
-                           data-monthly="${opt.priceMonthly}"
-                           onchange="calculateTotal()">
-                    <div class="flex-grow">
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-sm font-medium text-white group-hover:text-brand-accent transition-colors">${opt.label} ${badgeHTML}</span>
-                            <span class="text-sm font-bold text-white">+${formatBRL(opt.priceSetup)}</span>
+                <div class="p-3 border border-white/10 bg-white/5 hover:border-ln-neon transition-all group">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" 
+                               class="custom-checkbox w-5 h-5 rounded-none border border-gray-500 bg-transparent text-black focus:ring-0 mr-4 transition-all"
+                               data-setup="${opt.priceSetup}" 
+                               data-monthly="${opt.priceMonthly}"
+                               onchange="calculateTotal()">
+                        
+                        <div class="flex-grow">
+                            <div class="flex justify-between items-center">
+                                <span class="font-mono text-sm font-bold text-white group-hover:text-ln-neon uppercase">${opt.label}</span>
+                                <span class="font-mono text-sm font-bold text-ln-neon">+${formatBRL(opt.priceSetup)}</span>
+                            </div>
+                            <div class="text-xs text-gray-500 font-mono mt-1">MENSAL: +${opt.priceMonthly > 0 ? formatBRL(opt.priceMonthly) : 'R$ 0,00'}/mês</div>
                         </div>
-                        <div class="text-xs text-slate-500">
-                            ${opt.priceMonthly > 0 ? `Adiciona +${formatBRL(opt.priceMonthly)} na mensalidade` : 'Pagamento único'}
-                        </div>
+
+                        <button onclick="toggleDetail(event, '${uniqueId}')" class="ml-4 text-gray-400 hover:text-white focus:outline-none p-2">
+                            <i id="arrow-${uniqueId}" class="fa-solid fa-chevron-down transition-transform duration-300"></i>
+                        </button>
+                    </label>
+
+                    <div id="detail-${uniqueId}" class="details-content text-sm text-gray-400 font-mono pl-9 leading-relaxed">
+                        <p><i class="fa-solid fa-arrow-right text-ln-neon mr-2"></i>${opt.details}</p>
                     </div>
-                </label>
+                </div>
                 `;
                 optionsContainer.insertAdjacentHTML('beforeend', html);
             });
 
-            // 3. Reseta e Calcula
             calculateTotal();
-
-            // 4. Mostra Modal com Animação
             modal.classList.remove('hidden');
-            // Timeout pequeno para permitir que a classe 'hidden' saia antes da opacidade entrar
-            setTimeout(() => {
-                modal.classList.remove('opacity-0', 'scale-95');
-                modal.classList.add('opacity-100', 'scale-100');
-            }, 10);
-            
-            document.body.style.overflow = 'hidden'; // Trava scroll do body
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
         }
 
         function closeModal() {
-            modal.classList.remove('opacity-100', 'scale-100');
-            modal.classList.add('opacity-0', 'scale-95');
-            
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                document.body.style.overflow = 'auto'; // Destrava scroll
-            }, 300);
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = 'auto';
         }
 
         function calculateTotal() {
             if (!currentProduct) return;
-
             let totalSetup = currentProduct.baseSetup;
             let totalMonthly = currentProduct.baseMonthly;
 
-            // Busca todos os checkboxes marcados dentro do modal
             const checkboxes = document.querySelectorAll('#modalOptions input[type="checkbox"]:checked');
-            
             checkboxes.forEach(cb => {
                 totalSetup += parseFloat(cb.dataset.setup);
                 totalMonthly += parseFloat(cb.dataset.monthly);
             });
 
-            // Atualiza Globais
             currentSetup = totalSetup;
             currentMonthly = totalMonthly;
 
-            // Atualiza DOM
             displaySetup.innerText = formatBRL(totalSetup);
             displayMonthly.innerText = formatBRL(totalMonthly) + '/mês';
         }
 
-        function finalizarPedido() {
-            // Lógica de "Checkout" simulada
-            // Aqui você geraria o link do Mercado Pago ou enviaria os dados para o seu N8N webhook
+        async function finalizarPedido() {
+            const btn = document.querySelector('button[onclick="finalizarPedido()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<span class="inline-block animate-pulse">PROCESSANDO...</span>`;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
             
-            const selectedOptions = [];
-            document.querySelectorAll('#modalOptions input[type="checkbox"]:checked').forEach(cb => {
-                // Pega o label irmão do input (navegação DOM simples)
-                const labelText = cb.closest('label').querySelector('.text-sm.font-medium').innerText;
-                selectedOptions.push(labelText);
-            });
-
-            const msg = `
-            🚀 NOVO PEDIDO INICIADO:
+            // Simulação de chamada API
+            await new Promise(r => setTimeout(r, 1000));
             
-            Produto: ${currentProduct.title}
-            Opcionais: ${selectedOptions.length > 0 ? selectedOptions.join(', ') : 'Nenhum'}
-            
-            -------------------
-            Total Setup: ${formatBRL(currentSetup)}
-            Total Mensal: ${formatBRL(currentMonthly)}
-            
-            (Nesta etapa, o sistema redirecionaria para o Checkout do Mercado Pago gerado pelo Flask/Python)
-            `;
-            
-            alert(msg);
+            alert(`PEDIDO INICIADO!\nRedirecionando para Pagamento Seguro.\nInvestimento Total: ${formatBRL(currentSetup)}`);
+            btn.innerHTML = originalText;
+            btn.classList.remove('opacity-75', 'cursor-not-allowed');
             closeModal();
         }
 
-        // Fechar modal com ESC
-        document.addEventListener('keydown', function(event) {
-            if (event.key === "Escape") {
-                closeModal();
-            }
-        });
+        document.addEventListener('keydown', (e) => { if(e.key === "Escape") closeModal(); });
     </script>
 </body>
 </html>
