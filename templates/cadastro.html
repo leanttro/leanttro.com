@@ -203,7 +203,8 @@
                 cart: {
                     product_id: cartData.product.id,
                     addon_ids: cartData.addons.map(a => a.id),
-                    total_setup: cartData.totalSetup
+                    total_setup: cartData.totalSetup,
+                    total_monthly: cartData.totalMonthly // CORREÇÃO: Adicionado o valor mensal aqui
                 }
             };
 

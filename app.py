@@ -280,7 +280,7 @@ def generate_contract():
         print(f"Erro PDF: {e}")
         return jsonify({"error": "Falha ao gerar contrato"}), 500
 
-# 4. CHECKOUT COM CADASTRO (SUBSTITUI O ANTIGO)
+# 4. CHECKOUT COM CADASTRO (CORRIGIDO PARA SALVAR MENSALIDADE)
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
     if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
@@ -314,15 +314,15 @@ def signup_checkout():
             client_id = cur.fetchone()['id']
         
         # C. Cria o Pedido (Order)
-        # Nota: Você pode revalidar o preço aqui buscando no banco novamente para segurança extra
         addons_ids = cart.get('addon_ids', [])
-        total_val = float(cart.get('total_setup', 0))
+        total_setup = float(cart.get('total_setup', 0))
+        total_monthly = float(cart.get('total_monthly', 0)) # CORREÇÃO: Lê o valor mensal
         
         cur.execute("""
-            INSERT INTO orders (client_id, product_id, selected_addons, total_setup, payment_status, created_at)
-            VALUES (%s, %s, %s, %s, 'pending', NOW())
+            INSERT INTO orders (client_id, product_id, selected_addons, total_setup, total_monthly, payment_status, created_at)
+            VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
             RETURNING id
-        """, (client_id, cart['product_id'], addons_ids, total_val))
+        """, (client_id, cart['product_id'], addons_ids, total_setup, total_monthly)) # CORREÇÃO: Salva no banco
         order_id = cur.fetchone()['id']
         
         conn.commit()
@@ -334,7 +334,7 @@ def signup_checkout():
                     "id": str(cart['product_id']),
                     "title": f"PROJETO WEB #{order_id}",
                     "quantity": 1,
-                    "unit_price": total_val
+                    "unit_price": total_setup
                 }
             ],
             "payer": {
@@ -347,7 +347,7 @@ def signup_checkout():
             },
             "external_reference": str(order_id),
             "back_urls": {
-                "success": "https://leanttro.com/admin", # Mudar para seu domínio real
+                "success": "https://leanttro.com/admin", 
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
