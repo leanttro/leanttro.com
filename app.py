@@ -1,32 +1,34 @@
 import os
-import re
 import psycopg2
 import psycopg2.extras
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-import io
-from datetime import datetime, timedelta
 
+# Carrega variáveis de ambiente
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev')
+app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev') # Necessário para Sessão
 CORS(app)
 
+# --- CONFIGURAÇÕES GLOBAIS ---
 DB_URL = os.getenv('DATABASE_URL')
 GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 
-if GEMINI_KEY: genai.configure(api_key=GEMINI_KEY)
+# Configuração IA
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+
+# Configuração Mercado Pago
 mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
 
+# --- CONFIGURAÇÃO DE LOGIN (AUTH) ---
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login_page'
@@ -44,36 +46,41 @@ def load_user(user_id):
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, name, email FROM clients WHERE id = %s", (user_id,))
-        u = cur.fetchone()
-        return User(u['id'], u['name'], u['email']) if u else None
+        user_data = cur.fetchone()
+        if user_data:
+            return User(id=user_data['id'], name=user_data['name'], email=user_data['email'])
+        return None
+    except Exception as e:
+        print(f"Erro Auth: {e}")
+        return None
     finally:
         conn.close()
 
+# --- FUNÇÕES AUXILIARES ---
 def get_db_connection():
-    try: return psycopg2.connect(DB_URL)
-    except: return None
+    try:
+        return psycopg2.connect(DB_URL)
+    except Exception as e:
+        print(f"❌ Erro DB: {e}")
+        return None
 
-def extract_days(value_str):
-    # Extrai números de strings como "15 dias" ou retorna 2 como padrão
-    if not value_str: return 0
-    nums = re.findall(r'\d+', str(value_str))
-    return int(nums[0]) if nums else 2
+# --- ROTAS DE PÁGINAS (FRONTEND) ---
 
-# --- ROTAS DE PÁGINAS ---
 @app.route('/')
-def home(): return render_template('index.html')
-
-@app.route('/cadastro')
-def cadastro_page(): return render_template('cadastro.html')
+def home():
+    return render_template('index.html')
 
 @app.route('/login')
 def login_page():
-    if current_user.is_authenticated: return redirect(url_for('admin_page'))
+    if current_user.is_authenticated:
+        return redirect(url_for('admin_page'))
     return render_template('login.html')
 
 @app.route('/admin')
 @login_required
-def admin_page(): return render_template('admin.html', user=current_user)
+def admin_page():
+    # Passa o usuário logado para o HTML
+    return render_template('admin.html', user=current_user)
 
 @app.route('/logout')
 @login_required
@@ -81,142 +88,188 @@ def logout():
     logout_user()
     return redirect(url_for('home'))
 
-# --- API ---
+# --- ROTAS DE API (BACKEND) ---
 
+# 1. LOGIN
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "Erro de conexão"}), 500
+
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Busca usuário pelo email
+        cur.execute("SELECT id, name, email, password_hash FROM clients WHERE email = %s", (email,))
+        user_data = cur.fetchone()
+
+        if user_data and user_data['password_hash']:
+            # Verifica a senha hashada
+            if check_password_hash(user_data['password_hash'], password):
+                user_obj = User(id=user_data['id'], name=user_data['name'], email=user_data['email'])
+                login_user(user_obj)
+                return jsonify({"message": "Login realizado!", "redirect": "/admin"})
+            else:
+                return jsonify({"error": "Senha incorreta"}), 401
+        else:
+            return jsonify({"error": "Usuário não encontrado"}), 404
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Erro no servidor"}), 500
+    finally:
+        conn.close()
+
+# 2. CATÁLOGO DINÂMICO (Para popular o index.html)
 @app.route('/api/catalog', methods=['GET'])
 def get_catalog():
     conn = get_db_connection()
+    if not conn: return jsonify({"error": "Erro DB"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Agora busca também o campo prazo_products
-        cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
+        
+        # Busca produtos ativos
+        cur.execute("""
+            SELECT id, name, slug, description, price_setup, price_monthly 
+            FROM products WHERE is_active = TRUE
+        """)
         products = cur.fetchall()
         
         catalog = {}
         for p in products:
-            # Agora busca também o campo prazo_addons
-            cur.execute("SELECT id, name, price_setup, price_monthly, description, prazo_addons FROM addons WHERE product_id = %s", (p['id'],))
+            # Busca addons para este produto
+            cur.execute("""
+                SELECT id, name, price_setup, price_monthly, description 
+                FROM addons WHERE product_id = %s
+            """, (p['id'],))
             addons = cur.fetchall()
             
+            # Monta estrutura JSON compatível com o frontend
             catalog[p['slug']] = {
-                "id": p['id'],
+                "id": p['id'], # Importante para o pedido
                 "title": p['name'],
                 "desc": p['description'],
                 "baseSetup": float(p['price_setup']),
                 "baseMonthly": float(p['price_monthly']),
-                "prazoBase": extract_days(p.get('prazo_products', '10')), # Padrão 10 dias se vazio
                 "upsells": [
                     {
                         "id": a['id'],
                         "label": a['name'],
                         "priceSetup": float(a['price_setup']),
                         "priceMonthly": float(a['price_monthly']),
-                        "details": a['description'],
-                        "prazoExtra": extract_days(a.get('prazo_addons', '2')) # Padrão 2 dias se vazio
+                        "details": a['description']
                     } for a in addons
                 ]
             }
-        return jsonify(catalog)
-    finally:
-        conn.close()
-
-@app.route('/api/generate_contract', methods=['POST'])
-def generate_contract():
-    data = request.json
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    
-    # Lógica simples de geração de PDF
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(100, 750, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
-    c.setFont("Helvetica", 12)
-    c.drawString(100, 720, f"CONTRATANTE: {data.get('name', 'Cliente')}")
-    c.drawString(100, 700, f"CPF/CNPJ: {data.get('document', 'Não informado')}")
-    c.drawString(100, 680, f"PROJETO: {data.get('product_name')}")
-    c.drawString(100, 660, f"PRAZO ESTIMADO DE ENTREGA: {data.get('deadline')} dias úteis")
-    c.drawString(100, 640, f"VALOR SETUP: R$ {data.get('total_setup')}")
-    c.drawString(100, 620, f"VALOR MENSAL: R$ {data.get('total_monthly')}")
-    
-    c.drawString(100, 580, "OBJETO DO CONTRATO:")
-    c.drawString(100, 560, "Desenvolvimento e licenciamento de software conforme especificações.")
-    c.drawString(100, 500, f"Data: {datetime.now().strftime('%d/%m/%Y')}")
-    c.drawString(100, 450, "____________________________________")
-    c.drawString(100, 435, "Assinatura Digital LEANTTRO")
-    
-    c.showPage()
-    c.save()
-    buffer.seek(0)
-    
-    return send_file(buffer, as_attachment=True, download_name="Contrato_Leanttro.pdf", mimetype='application/pdf')
-
-@app.route('/api/signup_checkout', methods=['POST'])
-def signup_checkout():
-    data = request.json
-    client_data = data.get('client')
-    cart_data = data.get('cart')
-    
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # 1. Verifica ou Cria Cliente
-        cur.execute("SELECT id FROM clients WHERE email = %s", (client_data['email'],))
-        existing = cur.fetchone()
-        
-        if existing:
-            return jsonify({"error": "E-mail já cadastrado. Faça login."}), 400
             
-        hashed_pw = generate_password_hash(client_data['password'])
-        cur.execute("""
-            INSERT INTO clients (name, email, whatsapp, password_hash, status, created_at)
-            VALUES (%s, %s, %s, %s, 'active', NOW())
-            RETURNING id
-        """, (client_data['name'], client_data['email'], client_data['whatsapp'], hashed_pw))
-        client_id = cur.fetchone()['id']
-        
-        # 2. Recalcula valores no Backend (Segurança)
-        # (Lógica simplificada aqui, idealmente reutiliza a lógica do catalog)
-        total_setup = float(cart_data['total_setup']) # Confia no front por enquanto ou refaz query
-        
-        # 3. Cria Pedido
-        cur.execute("""
-            INSERT INTO orders (client_id, product_id, selected_addons, total_setup, payment_status, created_at)
-            VALUES (%s, %s, %s, %s, 'pending', NOW())
-            RETURNING id
-        """, (client_id, cart_data['product_id'], cart_data['addon_ids'], total_setup))
-        order_id = cur.fetchone()['id']
-        
-        conn.commit()
-        
-        # 4. Gera Checkout MP
-        preference_data = {
-            "items": [{"id": str(cart_data['product_id']), "title": f"PROJETO LEANTTRO #{order_id}", "quantity": 1, "unit_price": total_setup}],
-            "payer": {"name": client_data['name'], "email": client_data['email']},
-            "external_reference": str(order_id),
-            "back_urls": {"success": "https://leanttro.com/admin", "failure": "https://leanttro.com/"},
-            "auto_return": "approved"
-        }
-        
-        pref = mp_sdk.preference().create(preference_data)
-        
-        # Loga usuário automaticamente
-        user_obj = User(id=client_id, name=client_data['name'], email=client_data['email'])
-        login_user(user_obj)
-        
-        return jsonify({"checkout_url": pref["response"]["init_point"]})
-        
+        return jsonify(catalog)
     except Exception as e:
-        conn.rollback()
-        print(e)
+        print(f"Erro Catalogo: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# Mantém as outras rotas (admin login, etc)
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    # ... (código de login existente mantido)
-    pass
+# 3. CHECKOUT SEGURO (Cria Order + Link MP)
+@app.route('/api/checkout/create', methods=['POST'])
+def create_checkout():
+    if not mp_sdk: return jsonify({"error": "Mercado Pago offline"}), 500
+
+    data = request.json
+    # Dados do formulário do modal
+    client_info = data.get('client')  # { name, email, whatsapp }
+    cart = data.get('cart')           # { product_id, addon_ids: [] }
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # A. IDENTIFICAR OU CRIAR CLIENTE
+        cur.execute("SELECT id FROM clients WHERE email = %s", (client_info['email'],))
+        existing_client = cur.fetchone()
+        
+        if existing_client:
+            client_id = existing_client['id']
+        else:
+            # Cria lead se não existe (Senha será definida depois ou enviada por email)
+            # Dica: Você pode gerar uma senha temp aqui se quiser
+            cur.execute("""
+                INSERT INTO clients (name, email, whatsapp, status, created_at)
+                VALUES (%s, %s, %s, 'lead', NOW())
+                RETURNING id
+            """, (client_info['name'], client_info['email'], client_info['whatsapp']))
+            client_id = cur.fetchone()['id']
+            conn.commit()
+
+        # B. CALCULAR PREÇO NO SERVER (Segurança)
+        # 1. Preço Produto Base
+        cur.execute("SELECT price_setup, name FROM products WHERE id = %s", (cart['product_id'],))
+        product_row = cur.fetchone()
+        if not product_row: return jsonify({"error": "Produto inválido"}), 400
+        
+        total_setup = float(product_row['price_setup'])
+        product_title = product_row['name']
+        
+        # 2. Preço Addons
+        selected_addons_ids = cart.get('addon_ids', [])
+        if selected_addons_ids:
+            # Formata query segura para lista de IDs
+            query_addons = "SELECT price_setup FROM addons WHERE id = ANY(%s)"
+            cur.execute(query_addons, (selected_addons_ids,))
+            addons_rows = cur.fetchall()
+            for addon in addons_rows:
+                total_setup += float(addon['price_setup'])
+
+        # C. CRIAR PEDIDO (ORDER)
+        cur.execute("""
+            INSERT INTO orders (client_id, product_id, selected_addons, total_setup, payment_status, created_at)
+            VALUES (%s, %s, %s, %s, 'pending', NOW())
+            RETURNING id
+        """, (client_id, cart['product_id'], selected_addons_ids, total_setup))
+        order_id = cur.fetchone()['id']
+        conn.commit()
+
+        # D. GERAR LINK MERCADO PAGO
+        preference_data = {
+            "items": [
+                {
+                    "id": str(cart['product_id']),
+                    "title": f"PROJETO: {product_title}",
+                    "quantity": 1,
+                    "unit_price": total_setup
+                }
+            ],
+            "payer": {
+                "name": client_info['name'],
+                "email": client_info['email']
+            },
+            "external_reference": str(order_id), # VINCULA O PAGAMENTO AO PEDIDO
+            "back_urls": {
+                "success": "https://leanttro.com/admin", 
+                "failure": "https://leanttro.com/",
+                "pending": "https://leanttro.com/"
+            },
+            "auto_return": "approved"
+        }
+        
+        pref_response = mp_sdk.preference().create(preference_data)
+        payment_url = pref_response["response"]["init_point"]
+        
+        return jsonify({"checkout_url": payment_url})
+
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro Checkout: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# 4. CHATBOT (RAG)
+@app.route('/api/chat/message', methods=['POST'])
+def chat_message():
+    # ... (Mantenha seu código de chat aqui, pode usar o RAG na tabela 'leanttro_rag_knowledge' depois)
+    return jsonify({"reply": "Estou em manutenção para upgrade de segurança. Volto logo!"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
