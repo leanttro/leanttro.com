@@ -248,6 +248,13 @@ def api_login():
 
         if user_data and user_data['password_hash']:
             if check_password_hash(user_data['password_hash'], password):
+                
+                # --- TRAVA DE PAGAMENTO ---
+                # Se o status for 'pendente', não deixa entrar
+                if user_data.get('status') == 'pendente':
+                    return jsonify({"error": "Pagamento não confirmado. Aguarde o processamento."}), 403
+                # --------------------------
+
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
@@ -409,12 +416,14 @@ def signup_checkout():
         existing = cur.fetchone()
         
         if existing:
-            client_id = existing['id']
+            # Se já existir, avisa para fazer login
+            return jsonify({"error": "E-mail já cadastrado. Faça login."}), 400
         else:
             hashed = generate_password_hash(client['password'])
+            # Cria cliente PENDENTE
             cur.execute("""
                 INSERT INTO clients (name, email, whatsapp, password_hash, status, created_at)
-                VALUES (%s, %s, %s, %s, 'active', NOW())
+                VALUES (%s, %s, %s, %s, 'pendente', NOW())
                 RETURNING id
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
@@ -434,8 +443,12 @@ def signup_checkout():
         
         conn.commit()
         
+        # --- CORREÇÃO DO WEBHOOK (FIXO) ---
+        webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
+        
         preference_data = {
-            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": 10.00}],
+            # Restaurei o preço REAL aqui para seu cupom funcionar
+            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price":10.00}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
@@ -443,11 +456,14 @@ def signup_checkout():
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
+            "notification_url": webhook_url, # Essencial para ativar a conta
             "auto_return": "approved"
         }
         
         pref = mp_sdk.preference().create(preference_data)
-        login_user(User(client_id, client['name'], client['email']))
+        
+        # REMOVIDO: login_user(User(client_id, client['name'], client['email']))
+        # Motivo: Bloquear acesso até pagar.
         
         return jsonify({"checkout_url": pref["response"]["init_point"]})
 
@@ -457,6 +473,45 @@ def signup_checkout():
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
+
+# --- WEBHOOK (ATIVAR CLIENTE) ---
+@app.route('/api/webhook/mercadopago', methods=['POST'])
+def mercadopago_webhook():
+    topic = request.args.get('topic') or request.args.get('type')
+    p_id = request.args.get('id') or request.args.get('data.id')
+
+    if topic == 'payment' and p_id and mp_sdk:
+        try:
+            payment_info = mp_sdk.payment().get(p_id)
+            if payment_info["status"] == 200:
+                data = payment_info["response"]
+                status = data['status']
+                order_id = data['external_reference']
+                
+                if status == 'approved' and order_id:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    
+                    # 1. Atualiza Pedido
+                    cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (order_id,))
+                    
+                    # 2. Ativa Cliente
+                    cur.execute("""
+                        UPDATE clients 
+                        SET status = 'active' 
+                        WHERE id = (SELECT client_id FROM orders WHERE id = %s)
+                    """, (order_id,))
+                    
+                    conn.commit()
+                    conn.close()
+                    print(f"✅ PAGAMENTO CONFIRMADO: Pedido {order_id} ativado.")
+                    
+            return jsonify({"status": "ok"}), 200
+        except Exception as e:
+            print(f"Erro Webhook: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    return jsonify({"status": "ignored"}), 200
 
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
@@ -494,10 +549,10 @@ def save_briefing():
 
         conn = get_db_connection()
         cur = conn.cursor()
-        # Insere com 3 revisões padrão
+        # Salva como ATIVO pois agora só chega aqui se tiver pago
         cur.execute("""
             INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status, revisoes_restantes)
-            VALUES (%s, %s, %s, %s, %s, %s, 'pendente', 3)
+            VALUES (%s, %s, %s, %s, %s, %s, 'ativo', 3)
         """, (current_user.id, colors, style, sections, ",".join(file_names), tech_prompt))
         conn.commit()
         conn.close()
@@ -555,6 +610,20 @@ def briefing_chat():
         return jsonify({"reply": response.text})
     except:
         return jsonify({"reply": "Erro de conexão com a IA."})
+
+# --- ROTA EMERGÊNCIA DB (Mantida para garantir) ---
+@app.route('/fix-db')
+def fix_db():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
+        conn.commit()
+        return "Banco Atualizado: Coluna revisoes_restantes criada."
+    except Exception as e:
+        return f"Erro ao atualizar DB: {e}"
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
