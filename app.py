@@ -67,7 +67,7 @@ if GEMINI_KEY:
         
         # Inicializa o modelo globalmente (Flash é mais rápido)
         chat_model = genai.GenerativeModel(
-            'gemini-1.5-flash',
+            'gemini-pro',
             system_instruction=SYSTEM_PROMPT_LELIS
         )
         print("✅ Gemini (Lelis) inicializado com GEMINI_API_KEY.")
