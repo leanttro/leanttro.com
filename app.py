@@ -13,7 +13,6 @@ from werkzeug.utils import secure_filename
 import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
-import traceback
 
 # Importações para PDF
 from reportlab.lib.pagesizes import letter
@@ -34,63 +33,11 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # --- CONFIGURAÇÕES ---
 DB_URL = os.getenv('DATABASE_URL')
+GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 
-# --- CONFIGURAÇÃO GEMINI ---
-GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
-chat_model = None
-
 if GEMINI_KEY:
-    try:
-        genai.configure(api_key=GEMINI_KEY)
-        
-        # --- DEBUG: LISTAR MODELOS DISPONÍVEIS NO LOG ---
-        print("\n--- DEBUG: LISTA DE MODELOS DO GOOGLE ---")
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    print(f"Modelo disponível: {m.name}")
-        except Exception as e_list:
-            print(f"Não foi possível listar modelos: {e_list}")
-        print("------------------------------------------\n")
-        # ------------------------------------------------
-
-        # PERSONA LELIS (VENDEDOR)
-        SYSTEM_PROMPT_LELIS = """
-        VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
-        SUA MISSÃO: Fechar vendas. Você não é suporte, é VENDEDOR.
-        TOM: Agressivo, direto, confiante ("Lobo de Wall Street"), mas educado.
-        
-        TABELA DE PREÇOS (OFERTA RELÂMPAGO):
-        1. Site Institucional: De R$ 1.200 por R$ 499 (Promoção).
-        2. Loja Virtual: R$ 999.
-        3. Sistemas Custom: A partir de R$ 1.500.
-
-        REGRAS:
-        1. Respostas curtas (máximo 2 frases).
-        2. GATILHO: Sempre diga que a agenda está fechando ou restam poucas vagas.
-        3. Se perguntar preço, fale o valor e termine com: "Bora fechar agora?"
-        4. Se pedir contato humano, mande clicar no botão do WhatsApp.
-        """
-        
-        # ALTERAÇÃO: Mudado para 'gemini-pro' para garantir compatibilidade
-        # Se 'gemini-pro' falhar, tente 'gemini-1.0-pro'
-        try:
-            chat_model = genai.GenerativeModel(
-                'gemini-pro',
-                system_instruction=SYSTEM_PROMPT_LELIS
-            )
-            print("✅ Gemini (Lelis) inicializado com GEMINI_API_KEY (Model: gemini-pro).")
-        except Exception as e_model:
-            # Fallback para caso a lib seja muito antiga e não suporte system_instruction no construtor
-            print(f"⚠️ Aviso: Falha ao iniciar com system_instruction ({e_model}). Tentando modo simples.")
-            chat_model = genai.GenerativeModel('gemini-pro')
-            
-    except Exception as e:
-        print(f"❌ Erro ao configurar Gemini: {e}")
-else:
-    print("❌ Nenhuma API Key do Google (GEMINI_API_KEY) encontrada.")
-
+    genai.configure(api_key=GEMINI_KEY)
 
 mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
 
@@ -426,8 +373,7 @@ def save_briefing():
         """
         
         try:
-            # ALTERAÇÃO AQUI: Mudado para gemini-pro
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             response = model.generate_content(tech_prompt_input)
             tech_prompt = response.text
         except:
@@ -446,52 +392,51 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS ---
-@app.route('/api/chat', methods=['POST'])
-def handle_chat():
-    print("\n--- [LELIS VENDAS] Recebido trigger para /api/chat ---")
+# --- CHATBOT "LELIS" (CORRIGIDO E OTIMIZADO) ---
+@app.route('/api/chat/message', methods=['POST'])
+def chat_message():
+    data = request.json
+    msg = data.get('message', '')
     
-    if not chat_model:
-        print("❌ ERRO: Chat Model (Gemini) não está ativo.")
-        return jsonify({'error': 'Serviço de IA Offline (Verifique API KEY).'}), 503
+    # Lógica de horário nativa (sem bibliotecas extras que quebram o app)
+    hora_atual = datetime.now().hour
+    saudacao = "Bom dia"
+    if 12 <= hora_atual < 18:
+        saudacao = "Boa tarde"
+    elif hora_atual >= 18:
+        saudacao = "Boa noite"
 
     try:
-        data = request.json
-        history = data.get('conversationHistory', [])
+        # Tenta usar o modelo Flash (mais rápido e estável), se não, vai pro Pro
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+        except:
+            model = genai.GenerativeModel('gemini-pro')
         
-        # Converte para formato do Gemini
-        gemini_history = []
-        for message in history:
-            role = 'user' if message['role'] == 'user' else 'model'
-            gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
-            
-        chat_session = chat_model.start_chat(history=gemini_history)
+        # PROMPT LELIS: Vendedor Humano
+        prompt = f"""
+        Aja como Lelis, um consultor de vendas Sênior da agência Leanttro. 
+        NÃO aja como uma IA. Aja como um humano falando no WhatsApp.
         
-        # Se for a primeira mensagem e só tiver o input do user agora
-        user_message = data.get('message', '') # Fallback se vier direto
-        if history and history[-1]['role'] == 'user':
-            user_message = history[-1]['text']
-
-        # Se não tiver histórico nem mensagem (erro), define um padrão
-        if not user_message: user_message = "Olá"
-
-        print(f"ℹ️  [Lelis] Cliente perguntou: '{user_message}'")
+        CONTEXTO:
+        - Hora atual: {saudacao} (use isso se for a primeira mensagem).
+        - O cliente disse: "{msg}"
+        - Serviços: Site Institucional (R$499 - Promoção), Loja Virtual (R$999), Sistemas.
         
-        response = chat_session.send_message(
-            user_message,
-            generation_config=genai.types.GenerationConfig(temperature=0.7),
-            safety_settings={
-                 'HATE': 'BLOCK_NONE', 'HARASSMENT': 'BLOCK_NONE',
-                 'SEXUAL' : 'BLOCK_NONE', 'DANGEROUS' : 'BLOCK_NONE'
-            }
-        )
-        print(f"✅  [Lelis] Respondeu.")
-        return jsonify({'reply': response.text})
-
+        DIRETRIZES:
+        1. Seja curto e direto (máximo 2 frases).
+        2. Se o cliente apenas disser "oi", "olá" ou similar, responda: "{saudacao}! Tudo bem por aí? Como posso ajudar sua empresa hoje?"
+        3. Se perguntar preço, fale o valor e já pergunte: "Esse valor cabe no seu orçamento atual?"
+        4. Use 1 emoji no máximo.
+        5. Seu objetivo é fazer ele clicar nos planos ou tirar dúvida rápida.
+        """
+        
+        response = model.generate_content(prompt)
+        return jsonify({"reply": response.text})
     except Exception as e:
-        print(f"❌ ERRO CRÍTICO no CHAT: {e}")
-        traceback.print_exc()
-        return jsonify({'reply': "Minha conexão caiu... 🔌 Pode me chamar no WhatsApp? O botão tá ali em cima."}), 200
+        print(f"Erro Gemini: {e}")
+        # Mensagem de erro também na persona do Lelis, pra não quebrar a imersão
+        return jsonify({"reply": f"{saudacao}! A demanda tá gigante aqui agora. Clica no botão do WhatsApp ali em cima que eu te atendo rapidinho por lá? 🚀"})
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
@@ -499,8 +444,7 @@ def briefing_chat():
     data = request.json
     last_msg = data.get('message')
     try:
-        # ALTERAÇÃO AQUI: Mudado para gemini-pro
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(f"Você é LIA, especialista em Briefing. Ajude o cliente a definir o site. Cliente: {last_msg}")
         return jsonify({"reply": response.text})
     except:
