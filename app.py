@@ -25,7 +25,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev')
 CORS(app)
 
-# --- CONFIG UPLOAD (NOVO) ---
+# --- CONFIG UPLOAD ---
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -101,7 +101,6 @@ def cadastro_page():
 @app.route('/login')
 def login_page():
     if current_user.is_authenticated:
-        # Lógica inteligente: Verifica briefing antes de mandar pro admin
         conn = get_db_connection()
         try:
             cur = conn.cursor()
@@ -144,7 +143,6 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            # Dados específicos do cliente logado
             cur.execute("SELECT status, revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
             briefing = cur.fetchone()
             if briefing:
@@ -183,7 +181,6 @@ def api_login():
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # Verifica se tem briefing
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 redirect_url = "/admin" if has_briefing else "/briefing"
@@ -281,7 +278,6 @@ def generate_contract():
     except Exception as e:
         return jsonify({"error": "Erro PDF"}), 500
 
-# 4. SIGNUP + CHECKOUT (CORRIGIDO ERROS DE JSON E NULL)
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
     if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
@@ -310,12 +306,12 @@ def signup_checkout():
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
         
-        # --- CORREÇÃO DO BUG (JSONB e NULL) ---
+        # --- CORREÇÃO CRÍTICA DO PAGAMENTO ---
         addons_ids = cart.get('addon_ids', [])
-        # Converte lista para JSON String para o banco aceitar
+        # Converte lista para JSON String (Corrige erro type integer[])
         addons_json = json.dumps(addons_ids) 
         
-        # Previne erro de valor Nulo
+        # Corrige erro de valor Nulo
         total_setup = float(cart.get('total_setup') or 0)
         total_monthly = float(cart.get('total_monthly') or 0)
         
@@ -352,7 +348,6 @@ def signup_checkout():
     finally:
         conn.close()
 
-# 5. SALVAR BRIEFING + GERAR PROMPT (NOVA FUNCIONALIDADE)
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
 def save_briefing():
@@ -400,26 +395,39 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 6. CHATBOT RAG / BRIEFING (MANTIDO)
+# --- CHATBOT RESTAURADO (FUNCIONAL) ---
 @app.route('/api/chat/message', methods=['POST'])
 def chat_message():
-    # Rota original do Chatbot RAG (Mantida)
     data = request.json
     msg = data.get('message', '')
-    return jsonify({"reply": "Estou processando seu pedido."})
+    
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        # Contexto comercial para o chatbot da Home
+        prompt = f"""
+        Você é um assistente comercial da agência Leanttro.
+        Seu objetivo é vender sites e softwares.
+        Serviços: Site Institucional (R$499), Loja Virtual (R$999), Sistemas Custom.
+        Seja curto, persuasivo e use emojis.
+        Cliente: {msg}
+        """
+        response = model.generate_content(prompt)
+        return jsonify({"reply": response.text})
+    except Exception as e:
+        print(e)
+        return jsonify({"reply": "Estou com muita demanda agora! Mas posso criar o site perfeito para você. Escolha um plano acima!"})
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
 def briefing_chat():
     data = request.json
-    history = data.get('history', [])
     last_msg = data.get('message')
     try:
         model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"Ajude com briefing: {last_msg}")
+        response = model.generate_content(f"Você é LIA, especialista em Briefing. Ajude o cliente a definir o site. Cliente: {last_msg}")
         return jsonify({"reply": response.text})
     except:
-        return jsonify({"reply": "Erro IA"})
+        return jsonify({"reply": "Erro de conexão com a IA."})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
