@@ -24,7 +24,7 @@
     <div class="fixed top-0 w-full h-16 bg-ln-black border-b border-white/10 z-50 flex items-center justify-between px-6">
         <div class="text-xl font-black italic tracking-tighter">LEAN<span class="text-ln-neon">TTRO</span>.</div>
         <div class="flex items-center gap-4">
-            <span class="hidden md:block font-mono text-xs text-gray-400">OLÁ, {{ user.name.split()[0].upper() }}</span>
+            <span class="hidden md:block font-mono text-xs text-gray-400">OLÁ, {{ user.name.split(' ')[0] | upper }}</span>
             <div class="w-8 h-8 bg-ln-neon rounded-full flex items-center justify-center text-black font-bold text-xs">CL</div>
             <a href="/logout" class="text-xs text-red-500 hover:underline">SAIR</a>
         </div>

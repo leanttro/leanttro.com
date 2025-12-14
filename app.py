@@ -5,6 +5,7 @@ import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
+import pytz # NECESSÁRIO: pip install pytz
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -306,12 +307,9 @@ def signup_checkout():
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
         
-        # --- CORREÇÃO CRÍTICA DO PAGAMENTO ---
         addons_ids = cart.get('addon_ids', [])
-        # Converte lista para JSON String (Corrige erro type integer[])
         addons_json = json.dumps(addons_ids) 
         
-        # Corrige erro de valor Nulo
         total_setup = float(cart.get('total_setup') or 0)
         total_monthly = float(cart.get('total_monthly') or 0)
         
@@ -395,27 +393,51 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT RESTAURADO (FUNCIONAL) ---
+# --- CHATBOT ATUALIZADO (LÓGICA Leanttro) ---
 @app.route('/api/chat/message', methods=['POST'])
 def chat_message():
     data = request.json
     msg = data.get('message', '')
     
+    # 1. Lógica de Tempo para Saudação
     try:
-        model = genai.GenerativeModel('gemini-pro')
-        # Contexto comercial para o chatbot da Home
+        tz_br = pytz.timezone('America/Sao_Paulo') 
+        hora_atual = datetime.now(tz_br).hour
+    except:
+        hora_atual = datetime.now().hour # Fallback sem pytz
+    
+    saudacao = "Bom dia"
+    if 12 <= hora_atual < 18:
+        saudacao = "Boa tarde"
+    elif hora_atual >= 18:
+        saudacao = "Boa noite"
+
+    try:
+        model = genai.GenerativeModel('gemini-pro') # Ou gemini-1.5-flash se disponível
+        
+        # 2. Prompt "Vendedor Humano - Lelis"
         prompt = f"""
-        Você é um assistente comercial da agência Leanttro.
-        Seu objetivo é vender sites e softwares.
-        Serviços: Site Institucional (R$499), Loja Virtual (R$999), Sistemas Custom.
-        Seja curto, persuasivo e use emojis.
-        Cliente: {msg}
+        Aja como Lelis, um consultor de vendas Sênior da agência Leanttro. 
+        NÃO aja como uma IA. Aja como um humano falando no WhatsApp.
+        
+        CONTEXTO:
+        - Hora atual: {saudacao} (use isso se for a primeira mensagem).
+        - O cliente disse: "{msg}"
+        - Serviços: Site Institucional (R$499 - Promoção), Loja Virtual (R$999), Sistemas.
+        
+        DIRETRIZES:
+        1. Seja curto e direto (máximo 2 frases).
+        2. Se o cliente apenas disser "oi", "olá" ou similar, responda: "{saudacao}! Tudo bem por aí? Como posso ajudar sua empresa hoje?"
+        3. Se perguntar preço, fale o valor e já pergunte: "Esse valor cabe no seu orçamento atual?"
+        4. Use 1 emoji no máximo para não parecer infantil.
+        5. Seu objetivo é fazer ele clicar nos planos ou tirar dúvida rápida.
         """
+        
         response = model.generate_content(prompt)
         return jsonify({"reply": response.text})
     except Exception as e:
-        print(e)
-        return jsonify({"reply": "Estou com muita demanda agora! Mas posso criar o site perfeito para você. Escolha um plano acima!"})
+        print(f"Erro Gemini: {e}")
+        return jsonify({"reply": f"{saudacao}! Tive um pico de atendimentos aqui. Me chama no WhatsApp (botão no topo) que te respondo na hora? 🚀"})
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required

@@ -160,11 +160,17 @@
                 <span class="transform skew-x-[10deg] inline-block">ÁREA DO CLIENTE</span>
             </a>
             
-            <div class="md:hidden text-white text-2xl">
+            <div class="md:hidden text-white text-2xl cursor-pointer" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
                 <i class="fa-solid fa-bars-staggered"></i>
             </div>
         </div>
     </header>
+
+    <div id="mobile-menu" class="hidden fixed top-20 left-0 w-full bg-ln-black border-b border-white/10 p-6 z-30 flex flex-col gap-4 shadow-2xl">
+        <a href="#products" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Serviços</a>
+        <a href="#tech" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Por que ter site?</a>
+        <a href="/login" class="bg-ln-neon text-black text-center py-3 font-bold uppercase italic rounded-sm">Área do Cliente</a>
+    </div>
 
     <section class="relative min-h-screen flex items-center pt-20 overflow-hidden bg-ln-black bg-grid-pattern bg-[length:40px_40px]">
         <div class="absolute inset-0 bg-gradient-to-b from-transparent via-ln-black/50 to-ln-black pointer-events-none"></div>
@@ -436,7 +442,7 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ===
+        // === 1. CHATBOT ATUALIZADO (LÓGICA CARLOS + RETENÇÃO) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
@@ -445,8 +451,16 @@
         const indicator = document.getElementById('new-message-indicator');
         let chatState = 'closed';
         let welcomeMessageAdded = false;
+        let hasTriedToClose = false; // Controle de retenção
 
         function setChatState(newState, showNotification = false) {
+            // LÓGICA DE RETENÇÃO ("Não vá embora")
+            if (chatState === 'full' && newState === 'closed' && !hasTriedToClose) {
+                hasTriedToClose = true;
+                appendMessage('bot', "Ei, antes de ir... quer que eu te mande nosso portfólio no WhatsApp? É só deixar seu número aqui. 👇");
+                return; // Cancela o fechamento
+            }
+
             chatState = newState;
             chatTrigger.classList.remove('chat-visible'); chatTrigger.classList.add('chat-hidden-bottom');
             chatPeek.classList.remove('chat-visible'); chatPeek.classList.add('chat-hidden-bottom');
@@ -467,10 +481,7 @@
                 } else if (newState === 'full') {
                     chatFull.classList.remove('hidden');
                     setTimeout(() => { chatFull.classList.remove('chat-hidden-bottom'); chatFull.classList.add('chat-visible'); }, 50);
-                    if (!welcomeMessageAdded) {
-                        appendMessage('bot', "Olá! Sou o assistente da Leanttro. 🤖<br>Posso te ajudar a escolher o site ideal ou tirar dúvidas sobre preços. O que você procura hoje?");
-                        welcomeMessageAdded = true;
-                    }
+                    // Não forçamos mensagem aqui para deixar o usuário iniciar
                 }
             }, 300);
         }
@@ -478,7 +489,7 @@
         function appendMessage(sender, text) {
             const isUser = sender === 'user';
             const html = `
-                <div class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''}">
+                <div class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in">
                     ${!isUser ? `<div class="w-8 h-8 rounded-full overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10"><img src="/static/chat.png" class="w-full h-full object-cover"></div>` : ''}
                     <div class="${isUser ? 'bg-ln-neon text-black' : 'bg-ln-carbon border border-white/10 text-gray-300'} p-3 rounded-xl text-sm leading-relaxed max-w-[80%]">
                         ${text}
@@ -492,8 +503,16 @@
             e.preventDefault();
             const text = chatInput.value.trim();
             if(!text) return;
+            
             appendMessage('user', text);
             chatInput.value = '';
+            
+            // Efeito de "Digitando..."
+            const loadingId = 'typing-' + Date.now();
+            const loadingHtml = `<div id="${loadingId}" class="text-xs text-gray-500 font-mono ml-4 mb-2 animate-pulse">Carlos está digitando...</div>`;
+            messagesContainer.insertAdjacentHTML('beforeend', loadingHtml);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
             try {
                 const response = await fetch('/api/chat/message', {
                     method: 'POST',
@@ -501,16 +520,18 @@
                     body: JSON.stringify({ message: text })
                 });
                 const data = await response.json();
+                
+                document.getElementById(loadingId).remove();
                 appendMessage('bot', data.reply);
             } catch (error) {
+                document.getElementById(loadingId).remove();
                 appendMessage('bot', "Minha conexão caiu... 🔌 Pode me chamar no WhatsApp?");
             }
         }
         
         document.addEventListener('DOMContentLoaded', () => setChatState('peek'));
 
-
-        // === 2. LÓGICA DE PRODUTOS E CHECKOUT (CONECTADO AO DB) ===
+        // === 2. LÓGICA DE PRODUTOS E CHECKOUT ===
         
         const iconMap = {
             'site-institucional': '<i class="fa-solid fa-user-tie"></i>',
@@ -538,7 +559,7 @@
 
         async function loadCatalogFromDB() {
             try {
-                const res = await fetch('/api/catalog'); // Rota corrigida
+                const res = await fetch('/api/catalog');
                 if(!res.ok) throw new Error("Falha na API");
                 const data = await res.json();
                 
@@ -546,7 +567,7 @@
                     prod.icon = iconMap[slug] || '<i class="fa-solid fa-code"></i>';
                 }
                 catalog = data;
-                console.log("Catálogo carregado com sucesso:", catalog);
+                console.log("Catálogo carregado:", catalog);
             } catch (e) {
                 console.error("Erro ao carregar catálogo", e);
             }
@@ -576,7 +597,6 @@
             }
 
             const dbSlug = slugMap[htmlSlug] || htmlSlug;
-            
             currentProduct = catalog[dbSlug];
             currentProductSlug = dbSlug;
 
@@ -655,7 +675,6 @@
             displayMonthly.innerText = formatBRL(totalMonthly) + '/mês';
         }
 
-        // --- NOVA FUNÇÃO DE REDIRECIONAMENTO ---
         function irParaCadastro() {
             if (!currentProduct) return;
 
@@ -691,7 +710,6 @@
                 prazoTotal: prazoTotal
             };
 
-            // Salva e Redireciona
             localStorage.setItem('leanttro_cart', JSON.stringify(cartData));
             window.location.href = '/cadastro';
         }
