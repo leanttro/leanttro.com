@@ -47,14 +47,14 @@
             
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
                 <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-pen-ruler"></i></div>
-                <div class="font-mono text-xs text-gray-500 mb-1">REVISÕES RESTANTES</div>
-                <div class="text-3xl font-black uppercase text-white">{{ stats.revisoes }} <span class="text-sm font-normal text-gray-500">/ 2</span></div>
+                <div class="font-mono text-xs text-gray-500 mb-1">ALTERAÇÕES RESTANTES</div>
+                <div class="text-3xl font-black uppercase text-white" id="revisoesDisplay">{{ stats.revisoes }} <span class="text-sm font-normal text-gray-500">/ 3</span></div>
             </div>
 
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
                 <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-calendar-days"></i></div>
                 <div class="font-mono text-xs text-gray-500 mb-1">PREVISÃO DE ENTREGA</div>
-                <div class="text-xl font-bold uppercase">--/--/----</div>
+                <div class="text-xl font-bold uppercase">10 DIAS ÚTEIS</div>
             </div>
 
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
@@ -63,6 +63,44 @@
                 <div class="text-xl font-bold uppercase text-green-500">EM DIA</div>
             </div>
         </div>
+
+        {% if stats.briefing_data %}
+        <div class="bg-ln-carbon border border-white/10 p-8 mb-12 relative overflow-hidden">
+            <div class="absolute top-0 right-0 p-2 bg-white/5 font-mono text-xs text-gray-500">BRIEFING V1.0</div>
+            
+            <h2 class="font-mono text-sm text-ln-neon mb-6 uppercase border-b border-white/10 pb-2">
+                // MEU BRIEFING (VOCÊ PODE EDITAR)
+            </h2>
+
+            <form id="editBriefingForm" class="space-y-6">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">CORES PREFERIDAS</label>
+                        <input type="text" id="b_colors" value="{{ stats.briefing_data.colors }}" 
+                               class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none font-mono text-sm">
+                    </div>
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">ESTILO VISUAL</label>
+                        <input type="text" id="b_style" value="{{ stats.briefing_data.style }}" 
+                               class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none font-mono text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES DO SITE</label>
+                    <textarea id="b_sections" rows="3"
+                              class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none font-mono text-sm">{{ stats.briefing_data.sections }}</textarea>
+                </div>
+
+                <div class="flex justify-end items-center gap-4 pt-4 border-t border-white/5">
+                    <span id="saveStatus" class="text-xs font-mono text-gray-500"></span>
+                    <button type="button" onclick="updateBriefing()" id="btnUpdate"
+                            class="bg-white text-black px-6 py-2 font-bold uppercase hover:bg-ln-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        SALVAR ALTERAÇÕES
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
 
         <h2 class="font-mono text-sm text-gray-500 mb-6 uppercase border-b border-white/10 pb-2">AÇÕES RÁPIDAS</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -77,5 +115,68 @@
         </div>
 
     </div>
+
+    <script>
+        // Lógica de edição do Briefing
+        const revisoesRestantes = {{ stats.revisoes }};
+        const btnUpdate = document.getElementById('btnUpdate');
+        const statusSpan = document.getElementById('saveStatus');
+
+        // Se não tiver revisões, bloqueia edição
+        if (revisoesRestantes <= 0) {
+            if(btnUpdate) {
+                btnUpdate.disabled = true;
+                btnUpdate.innerText = "LIMITE DE ALTERAÇÕES ATINGIDO";
+                document.getElementById('b_colors').disabled = true;
+                document.getElementById('b_style').disabled = true;
+                document.getElementById('b_sections').disabled = true;
+            }
+        }
+
+        async function updateBriefing() {
+            if (revisoesRestantes <= 0) return;
+
+            const colors = document.getElementById('b_colors').value;
+            const style = document.getElementById('b_style').value;
+            const sections = document.getElementById('b_sections').value;
+
+            btnUpdate.innerText = "SALVANDO...";
+            btnUpdate.disabled = true;
+
+            try {
+                const response = await fetch('/api/briefing/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ colors, style, sections })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusSpan.innerText = "ALTERAÇÃO SALVA COM SUCESSO!";
+                    statusSpan.className = "text-xs font-mono text-ln-neon";
+                    
+                    // Atualiza contador visualmente
+                    document.getElementById('revisoesDisplay').innerHTML = `${data.revisoes_restantes} <span class="text-sm font-normal text-gray-500">/ 3</span>`;
+                    
+                    // Se zerou, recarrega a página para bloquear tudo
+                    if (data.revisoes_restantes <= 0) {
+                        setTimeout(() => window.location.reload(), 1500);
+                    } else {
+                        btnUpdate.innerText = "SALVAR ALTERAÇÕES";
+                        btnUpdate.disabled = false;
+                    }
+                } else {
+                    statusSpan.innerText = "ERRO: " + data.error;
+                    statusSpan.className = "text-xs font-mono text-red-500";
+                    btnUpdate.innerText = "TENTAR NOVAMENTE";
+                    btnUpdate.disabled = false;
+                }
+            } catch (error) {
+                statusSpan.innerText = "ERRO DE CONEXÃO";
+                btnUpdate.disabled = false;
+            }
+        }
+    </script>
 </body>
 </html>

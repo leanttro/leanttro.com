@@ -46,31 +46,18 @@ if GEMINI_KEY:
         genai.configure(api_key=GEMINI_KEY)
         
         print("\n========== [DIAGNÓSTICO DE MODELOS] ==========")
-        print(f"Chave usada (início): {GEMINI_KEY[:5]}...")
-        
         found_model = None
         try:
-            # Tenta listar todos os modelos disponíveis para essa chave
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
-                    # Remove o prefixo 'models/' se vier junto, para garantir compatibilidade
                     clean_name = m.name.replace('models/', '')
-                    print(f"✅ MODELO DISPONÍVEL: {m.name} (Limpo: {clean_name})")
-                    
-                    # Pega o primeiro que aparecer (geralmente é o melhor compatível)
-                    if not found_model:
-                        found_model = clean_name
+                    if not found_model: found_model = clean_name
         except Exception as e_list:
-            print(f"❌ ERRO AO LISTAR MODELOS: {e_list}")
-            print("Tentando forçar uso do 'gemini-pro'...")
+            print(f"Erro listar modelos: {e_list}")
 
         if found_model:
             SELECTED_MODEL_NAME = found_model
-            print(f"🎯 MODELO SELECIONADO AUTOMATICAMENTE: {SELECTED_MODEL_NAME}")
-        else:
-            print(f"⚠️ Nenhum modelo listado. Usando fallback: {SELECTED_MODEL_NAME}")
-
-        print("==============================================\n")
+            print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
 
         # PERSONA LELIS (VENDEDOR)
         SYSTEM_PROMPT_LELIS = """
@@ -95,15 +82,12 @@ if GEMINI_KEY:
                 SELECTED_MODEL_NAME,
                 system_instruction=SYSTEM_PROMPT_LELIS
             )
-            print(f"🚀 Gemini INICIALIZADO com sucesso usando: {SELECTED_MODEL_NAME}")
-        except Exception as e_init:
-            # Se falhar com system_instruction, tenta sem (biblioteca antiga)
-            print(f"⚠️ Falha com system prompt ({e_init}). Tentando inicialização simples...")
+        except:
+            print("⚠️ Fallback: Iniciando Gemini sem System Prompt.")
             chat_model = genai.GenerativeModel(SELECTED_MODEL_NAME)
             
     except Exception as e:
-        print(f"❌ Erro CRÍTICO ao configurar Gemini: {e}")
-        traceback.print_exc()
+        print(f"❌ Erro Gemini: {e}")
 else:
     print("❌ Nenhuma API Key do Google encontrada.")
 
@@ -169,15 +153,16 @@ def cadastro_page():
 
 @app.route('/login')
 def login_page():
+    # LÓGICA DE REDIRECIONAMENTO INTELIGENTE
     if current_user.is_authenticated:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
             cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
             if cur.fetchone():
-                return redirect(url_for('admin_page'))
+                return redirect(url_for('admin_page')) # Tem briefing -> Admin
             else:
-                return redirect(url_for('briefing_page'))
+                return redirect(url_for('briefing_page')) # Não tem -> Briefing
         finally:
             conn.close()
     return render_template('login.html')
@@ -188,6 +173,7 @@ def briefing_page():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        # SE JÁ TIVER BRIEFING, NÃO PODE ACESSAR AQUI, VAI PRO ADMIN
         cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
         if cur.fetchone():
             return redirect(url_for('admin_page'))
@@ -199,7 +185,11 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
-    stats = {"users": 0, "orders": 0, "revenue": 0.0, "status_projeto": "AGUARDANDO", "revisoes": 2}
+    stats = {
+        "users": 0, "orders": 0, "revenue": 0.0, 
+        "status_projeto": "AGUARDANDO", "revisoes": 3,
+        "briefing_data": None
+    }
     try:
         if conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -212,14 +202,25 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            cur.execute("SELECT status, revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
+            # BUSCA DADOS DO BRIEFING PARA EXIBIR/EDITAR
+            cur.execute("""
+                SELECT status, revisoes_restantes, colors, style_preference, site_sections 
+                FROM briefings WHERE client_id = %s
+            """, (current_user.id,))
             briefing = cur.fetchone()
+            
             if briefing:
                 stats["status_projeto"] = briefing['status'].upper().replace('_', ' ')
                 stats["revisoes"] = briefing['revisoes_restantes']
+                stats["briefing_data"] = {
+                    "colors": briefing['colors'],
+                    "style": briefing['style_preference'],
+                    "sections": briefing['site_sections']
+                }
             
             conn.close()
-    except:
+    except Exception as e:
+        print(f"Erro Admin: {e}")
         pass
     return render_template('admin.html', user=current_user, stats=stats)
 
@@ -250,8 +251,11 @@ def api_login():
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
+                # VERIFICA SE JÁ PREENCHEU BRIEFING
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
+                
+                # REDIRECIONA CONFORME O STATUS
                 redirect_url = "/admin" if has_briefing else "/briefing"
 
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
@@ -259,6 +263,46 @@ def api_login():
         return jsonify({"error": "Credenciais inválidas"}), 401
     finally:
         conn.close()
+
+# --- NOVA ROTA: ATUALIZAR BRIEFING (EDITAR) ---
+@app.route('/api/briefing/update', methods=['POST'])
+@login_required
+def update_briefing():
+    data = request.json
+    colors = data.get('colors')
+    style = data.get('style')
+    sections = data.get('sections')
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # 1. Verifica revisões
+        cur.execute("SELECT revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
+        res = cur.fetchone()
+        
+        if not res: return jsonify({"error": "Briefing não encontrado"}), 404
+        
+        revisoes = res['revisoes_restantes']
+        if revisoes <= 0:
+            return jsonify({"error": "Limite de alterações atingido."}), 403
+
+        # 2. Atualiza e desconta 1 revisão
+        cur.execute("""
+            UPDATE briefings 
+            SET colors = %s, style_preference = %s, site_sections = %s, revisoes_restantes = revisoes_restantes - 1
+            WHERE client_id = %s
+        """, (colors, style, sections, current_user.id))
+        
+        conn.commit()
+        return jsonify({"success": True, "revisoes_restantes": revisoes - 1})
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
 
 @app.route('/api/catalog', methods=['GET'])
 def get_catalog():
@@ -442,7 +486,6 @@ def save_briefing():
         """
         
         try:
-            # Usa o mesmo modelo detectado no início
             model = genai.GenerativeModel(SELECTED_MODEL_NAME)
             response = model.generate_content(tech_prompt_input)
             tech_prompt = response.text
@@ -451,9 +494,10 @@ def save_briefing():
 
         conn = get_db_connection()
         cur = conn.cursor()
+        # Insere com 3 revisões padrão
         cur.execute("""
-            INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status)
-            VALUES (%s, %s, %s, %s, %s, %s, 'pendente')
+            INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status, revisoes_restantes)
+            VALUES (%s, %s, %s, %s, %s, %s, 'pendente', 3)
         """, (current_user.id, colors, style, sections, ",".join(file_names), tech_prompt))
         conn.commit()
         conn.close()
@@ -468,7 +512,6 @@ def handle_chat():
     print(f"\n--- [LELIS] Chat trigger (Modelo ativo: {SELECTED_MODEL_NAME}) ---")
     
     if not chat_model:
-        print("❌ ERRO: Chat Model não inicializado.")
         return jsonify({'error': 'Serviço de IA Offline.'}), 503
 
     try:
@@ -487,8 +530,6 @@ def handle_chat():
             user_message = history[-1]['text']
         if not user_message: user_message = "Olá"
 
-        print(f"ℹ️  [Lelis] Msg: '{user_message}'")
-        
         response = chat_session.send_message(
             user_message,
             generation_config=genai.types.GenerationConfig(temperature=0.7),
@@ -497,12 +538,10 @@ def handle_chat():
                  'SEXUAL' : 'BLOCK_NONE', 'DANGEROUS' : 'BLOCK_NONE'
             }
         )
-        print(f"✅  [Lelis] Resposta OK")
         return jsonify({'reply': response.text})
 
     except Exception as e:
         print(f"❌ ERRO CHAT: {e}")
-        traceback.print_exc()
         return jsonify({'reply': "Minha conexão caiu... 🔌 Chama no WhatsApp?"}), 200
 
 @app.route('/api/briefing/chat', methods=['POST'])
