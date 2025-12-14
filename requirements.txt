@@ -7,3 +7,4 @@ python-dotenv
 requests
 mercadopago
 flask-login
+reportlab
