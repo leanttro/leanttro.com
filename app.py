@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
+import traceback
 
 # Importações para PDF
 from reportlab.lib.pagesizes import letter
@@ -31,15 +32,57 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES DO AMBIENTE ---
 DB_URL = os.getenv('DATABASE_URL')
-GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
+# Tenta pegar a chave com os dois nomes possíveis pra não ter erro
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 
 mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
+
+# --- CONFIGURAÇÃO DO GEMINI (IGUAL AO COPIA.PY) ---
+chat_model = None
+
+try:
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        # --- PERSONA LELIS (VENDEDOR) ---
+        SYSTEM_PROMPT_LELIS = """
+        VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
+        SUA MISSÃO: Vender sites e sistemas. Você não é suporte técnico, você é FECHADOR de negócios.
+        
+        SEU TOM DE VOZ:
+        - Profissional, mas agressivo em vendas ("Lobo de Wall Street").
+        - Use gatilhos mentais de escassez ("Tenho poucas vagas na agenda").
+        - Direto ao ponto. Respostas curtas (máximo 2 parágrafos).
+        
+        SEUS PRODUTOS E PREÇOS:
+        1. Site Institucional (Ouro): Promoção de R$ 1.200 por R$ 499.
+        2. Loja Virtual (Diamante): R$ 999.
+        3. Sistemas Custom: A partir de R$ 1.500.
+
+        REGRAS DE RESPOSTA:
+        1. Se perguntarem preço, dê o preço e pergunte: "Vamos fechar agora e garantir esse valor?"
+        2. Se perguntarem sobre o Leandro, diga: "O Leandro é o gênio técnico, eu sou quem resolve seu problema de negócios."
+        3. DIRECONAMENTO: Sempre tente levar o cliente para clicar no botão de WhatsApp.
+        4. O cliente não quer papo furado, ele quer solução.
+        """
+
+        # Inicializa o modelo globalmente para performance (Igual ao Copia.py)
+        # Usando flash para ser rápido
+        chat_model = genai.GenerativeModel(
+            'gemini-1.5-flash', 
+            system_instruction=SYSTEM_PROMPT_LELIS
+        )
+        print("✅ [Gemini] Chatbot Lelis inicializado com sucesso.")
+    else:
+        print("❌ ERRO: GEMINI_API_KEY/GOOGLE_API_KEY não encontrada.")
+except Exception as e:
+    print(f"❌ Erro ao inicializar Gemini: {e}")
+    chat_model = None
+
 
 # --- AUTHENTICATION SETUP ---
 login_manager = LoginManager()
@@ -392,51 +435,55 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT "LELIS" (CORRIGIDO E OTIMIZADO) ---
-@app.route('/api/chat/message', methods=['POST'])
-def chat_message():
-    data = request.json
-    msg = data.get('message', '')
+# --- CHATBOT LELIS (ESTRUTURA IGUAL AO COPIA.PY) ---
+# Endpoint: /api/chat (Igual ao frontend antigo)
+# Lógica: Recebe histórico e usa sessão global
+@app.route('/api/chat', methods=['POST'])
+def handle_chat():
+    print("\n--- [LELIS VENDAS] Recebido trigger para /api/chat ---")
     
-    # Lógica de horário nativa (sem bibliotecas extras que quebram o app)
-    hora_atual = datetime.now().hour
-    saudacao = "Bom dia"
-    if 12 <= hora_atual < 18:
-        saudacao = "Boa tarde"
-    elif hora_atual >= 18:
-        saudacao = "Boa noite"
+    if not chat_model:
+        print("❌ ERRO: Chat Model não inicializado.")
+        return jsonify({'error': 'Serviço de IA Offline.'}), 503
 
     try:
-        # Tenta usar o modelo Flash (mais rápido e estável), se não, vai pro Pro
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-        except:
-            model = genai.GenerativeModel('gemini-pro')
+        data = request.json
+        # Pega o HISTÓRICO igual ao Copia.py
+        history = data.get('conversationHistory', [])
         
-        # PROMPT LELIS: Vendedor Humano
-        prompt = f"""
-        Aja como Lelis, um consultor de vendas Sênior da agência Leanttro. 
-        NÃO aja como uma IA. Aja como um humano falando no WhatsApp.
+        gemini_history = []
+        for message in history:
+            role = 'user' if message['role'] == 'user' else 'model'
+            gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
+            
+        # Inicia o chat com histórico
+        chat_session = chat_model.start_chat(history=gemini_history)
         
-        CONTEXTO:
-        - Hora atual: {saudacao} (use isso se for a primeira mensagem).
-        - O cliente disse: "{msg}"
-        - Serviços: Site Institucional (R$499 - Promoção), Loja Virtual (R$999), Sistemas.
+        # Pega a última mensagem ou usa padrão
+        user_message = history[-1]['text'] if history and history[-1]['role'] == 'user' else "Olá"
+
+        print(f"ℹ️  [Lelis] Cliente disse: '{user_message}'")
         
-        DIRETRIZES:
-        1. Seja curto e direto (máximo 2 frases).
-        2. Se o cliente apenas disser "oi", "olá" ou similar, responda: "{saudacao}! Tudo bem por aí? Como posso ajudar sua empresa hoje?"
-        3. Se perguntar preço, fale o valor e já pergunte: "Esse valor cabe no seu orçamento atual?"
-        4. Use 1 emoji no máximo.
-        5. Seu objetivo é fazer ele clicar nos planos ou tirar dúvida rápida.
-        """
-        
-        response = model.generate_content(prompt)
-        return jsonify({"reply": response.text})
+        response = chat_session.send_message(
+            user_message,
+            generation_config=genai.types.GenerationConfig(temperature=0.7),
+            safety_settings={
+                 'HATE': 'BLOCK_NONE', 'HARASSMENT': 'BLOCK_NONE',
+                 'SEXUAL' : 'BLOCK_NONE', 'DANGEROUS' : 'BLOCK_NONE'
+            }
+        )
+        print(f"✅  [Lelis] Resposta gerada.")
+        return jsonify({'reply': response.text})
+
+    except genai.types.generation_types.StopCandidateException as stop_ex:
+        print(f"❌ API BLOQUEOU a resposta por segurança: {stop_ex}")
+        return jsonify({'reply': "Desculpe, não posso responder isso. Mas bora focar no seu projeto?"})
+    
     except Exception as e:
-        print(f"Erro Gemini: {e}")
-        # Mensagem de erro também na persona do Lelis, pra não quebrar a imersão
-        return jsonify({"reply": f"{saudacao}! A demanda tá gigante aqui agora. Clica no botão do WhatsApp ali em cima que eu te atendo rapidinho por lá? 🚀"})
+        print(f"❌ ERRO CRÍTICO no endpoint /api/chat: {e}")
+        traceback.print_exc()
+        # Fallback de erro com a persona do Lelis
+        return jsonify({'reply': "Opa! Minha conexão deu uma oscilada aqui (muita gente chamando). Me chama no WhatsApp ali em cima que é mais garantido? 🚀"}), 200
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
