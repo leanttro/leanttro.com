@@ -5,11 +5,11 @@ import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, send_from_directory
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename # Adicionado para upload
+from werkzeug.utils import secure_filename
 import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
@@ -66,11 +66,9 @@ def load_user(user_id):
     if not conn: return None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Tenta achar em clients (usuários comuns e admins)
         cur.execute("SELECT id, name, email, status FROM clients WHERE id = %s", (user_id,))
         u = cur.fetchone()
         if u:
-            # Se tiver status 'admin', define role como admin, senão user
             role = 'admin' if u.get('status') == 'admin' else 'user'
             return User(u['id'], u['name'], u['email'], role)
         return None
@@ -82,11 +80,8 @@ def load_user(user_id):
 
 # --- HELPER FUNCTIONS ---
 def extract_days(value):
-    """Extrai número de dias de strings ou retorna padrão"""
     if not value: return 0
-    # Se já for int, retorna
     if isinstance(value, int): return value
-    # Se for string "15 dias", extrai 15
     nums = re.findall(r'\d+', str(value))
     return int(nums[0]) if nums else 0
 
@@ -106,7 +101,7 @@ def cadastro_page():
 @app.route('/login')
 def login_page():
     if current_user.is_authenticated:
-        # Lógica de Redirecionamento Inteligente
+        # Redirecionamento Inteligente: Admin ou Briefing
         conn = get_db_connection()
         try:
             cur = conn.cursor()
@@ -122,7 +117,7 @@ def login_page():
 @app.route('/briefing')
 @login_required
 def briefing_page():
-    # Verifica se já preencheu
+    # Se já tem briefing, bloqueia e manda pro admin
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -142,7 +137,6 @@ def admin_page():
         if conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
-            # Dados Gerais (Se for Admin)
             if current_user.role == 'admin':
                 cur.execute("SELECT COUNT(*) as c FROM clients")
                 stats["users"] = cur.fetchone()['c']
@@ -151,7 +145,7 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            # Dados do Projeto (Se for Cliente)
+            # Busca status do briefing para o cliente
             cur.execute("SELECT status, revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
             briefing = cur.fetchone()
             if briefing:
@@ -161,7 +155,6 @@ def admin_page():
             conn.close()
     except:
         pass
-        
     return render_template('admin.html', user=current_user, stats=stats)
 
 @app.route('/logout')
@@ -192,11 +185,11 @@ def api_login():
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # Verifica briefing para redirecionar
+                # Verifica briefing para redirecionar corretamente
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 redirect_url = "/admin" if has_briefing else "/briefing"
-
+                
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
         
         return jsonify({"error": "Credenciais inválidas"}), 401
@@ -210,22 +203,12 @@ def get_catalog():
     if not conn: return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # Busca produtos e prazos
-        cur.execute("""
-            SELECT id, name, slug, description, price_setup, price_monthly, prazo_products 
-            FROM products 
-            WHERE is_active = TRUE
-        """)
+        cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
         products = cur.fetchall()
         
         catalog = {}
         for p in products:
-            cur.execute("""
-                SELECT id, name, price_setup, price_monthly, description, prazo_addons 
-                FROM addons 
-                WHERE product_id = %s
-            """, (p['id'],))
+            cur.execute("SELECT id, name, price_setup, price_monthly, description, prazo_addons FROM addons WHERE product_id = %s", (p['id'],))
             addons = cur.fetchall()
             
             prazo_prod = extract_days(p.get('prazo_products')) or 10
@@ -248,7 +231,6 @@ def get_catalog():
                     } for a in addons
                 ]
             }
-            
         return jsonify(catalog)
     except Exception as e:
         print(f"Erro Catalog: {e}")
@@ -256,7 +238,7 @@ def get_catalog():
     finally:
         conn.close()
 
-# 3. GERAÇÃO DE CONTRATO (ATUALIZADO REVISÕES)
+# 3. GERAÇÃO DE CONTRATO (COM REVISÕES)
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -265,65 +247,50 @@ def generate_contract():
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
         
-        # Cabeçalho
         p.setFillColorRGB(0.05, 0.05, 0.05)
         p.rect(0, height - 100, width, 100, fill=1)
-        p.setFillColorRGB(0.82, 1, 0) # Neon
+        p.setFillColorRGB(0.82, 1, 0)
         p.setFont("Helvetica-BoldOblique", 24)
         p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
         
-        # Título
         p.setFillColorRGB(0, 0, 0)
         p.setFont("Helvetica-Bold", 18)
         p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
         
-        # Dados do Cliente
         p.setFont("Helvetica", 12)
         y = height - 200
         p.drawString(50, y, f"CONTRATANTE: {data.get('name', 'N/A').upper()}")
-        p.drawString(50, y-20, f"DOCUMENTO (CPF/CNPJ): {data.get('document', 'N/A')}")
-        p.drawString(50, y-40, f"DATA DA SOLICITAÇÃO: {datetime.now().strftime('%d/%m/%Y')}")
+        p.drawString(50, y-20, f"DOCUMENTO: {data.get('document', 'N/A')}")
         
-        # Objeto do Contrato
         y -= 80
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "OBJETO DO CONTRATO")
+        p.drawString(50, y, "ESCOPO DO PROJETO")
         p.setFont("Helvetica", 12)
         y -= 25
-        p.drawString(50, y, f"Desenvolvimento de Projeto Web: {data.get('product_name')}")
-        y -= 20
-        p.drawString(50, y, f"Prazo Estimado de Entrega: {data.get('deadline')} dias úteis")
+        p.drawString(50, y, f"Projeto: {data.get('product_name')}")
+        p.drawString(50, y-20, f"Entrega Estimada: {data.get('deadline')} dias úteis")
+        p.drawString(50, y-40, f"Setup: {data.get('total_setup')}")
+        p.drawString(50, y-60, f"Mensal: {data.get('total_monthly')}")
         
-        # Valores
-        y -= 60
-        p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "INVESTIMENTO")
-        p.setFont("Helvetica", 12)
-        y -= 25
-        p.drawString(50, y, f"Setup (Criação): R$ {data.get('total_setup')}")
-        y -= 20
-        p.drawString(50, y, f"Manutenção Mensal: {data.get('total_monthly')}")
-        
-        # Termos Legais (Cláusula de Revisão Adicionada)
-        y -= 60
+        # CLÁUSULA DE REVISÃO
+        y -= 100
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES")
+        p.drawString(50, y, "CLÁUSULA DE REVISÕES:")
         p.setFont("Helvetica", 10)
-        y -= 15
+        y -= 20
         p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão.")
         y -= 15
-        p.drawString(50, y, "2. Alterações adicionais serão cobradas a R$ 150,00/hora técnica.")
+        p.drawString(50, y, "2. Alterações extras serão cobradas a R$ 150,00/hora técnica.")
         
         p.showPage()
         p.save()
         buffer.seek(0)
-        
-        return send_file(buffer, as_attachment=True, download_name=f"Contrato_Leanttro_{data.get('document')}.pdf", mimetype='application/pdf')
+        return send_file(buffer, as_attachment=True, download_name=f"Contrato.pdf", mimetype='application/pdf')
     except Exception as e:
         print(f"Erro PDF: {e}")
         return jsonify({"error": "Falha ao gerar contrato"}), 500
 
-# 4. CHECKOUT (CORRIGIDO)
+# 4. CHECKOUT (CORRIGIDO PARA EVITAR ERRO DE MENSALIDADE)
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
     if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
@@ -332,8 +299,7 @@ def signup_checkout():
     client = data.get('client')
     cart = data.get('cart')
     
-    if not client or not cart:
-        return jsonify({"error": "Dados incompletos"}), 400
+    if not client or not cart: return jsonify({"error": "Dados incompletos"}), 400
 
     conn = get_db_connection()
     try:
@@ -353,9 +319,9 @@ def signup_checkout():
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
         
-        # PREVINE ERRO DE MENSALIDADE NULA
-        total_setup = float(cart.get('total_setup', 0))
-        total_monthly = float(cart.get('total_monthly') or 0) 
+        # Correção para o erro da Imagem 5 (total_monthly null)
+        total_setup = float(cart.get('total_setup') or 0)
+        total_monthly = float(cart.get('total_monthly') or 0)
         addons_ids = cart.get('addon_ids', [])
         
         cur.execute("""
@@ -372,7 +338,7 @@ def signup_checkout():
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
-                "success": "https://leanttro.com/login", 
+                "success": "https://leanttro.com/login", # Manda pro login para cair no briefing
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
@@ -380,14 +346,13 @@ def signup_checkout():
         }
         
         pref = mp_sdk.preference().create(preference_data)
-        
         login_user(User(client_id, client['name'], client['email']))
         
         return jsonify({"checkout_url": pref["response"]["init_point"]})
 
     except Exception as e:
         conn.rollback()
-        print(f"Erro Signup Checkout: {e}")
+        print(f"Erro Checkout: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
@@ -412,16 +377,14 @@ def save_briefing():
 
         # GERAÇÃO DO PROMPT TÉCNICO
         tech_prompt_input = f"""
-        ATUE COMO ARQUITETO DE SOFTWARE SÊNIOR.
-        Crie um prompt técnico detalhado para um desenvolvedor criar um site com base nisto:
+        ATUE COMO ARQUITETO DE SOFTWARE. Crie um prompt técnico para criar um site:
         - CLIENTE: {current_user.name}
         - CORES: {colors}
         - ESTILO: {style}
         - SEÇÕES: {sections}
         - STACK: HTML, TailwindCSS, JS.
-        - SAÍDA: Apenas o prompt técnico em inglês ou português.
+        - SAÍDA: Apenas o prompt técnico.
         """
-        
         model = genai.GenerativeModel('gemini-pro')
         response = model.generate_content(tech_prompt_input)
         tech_prompt = response.text
@@ -437,7 +400,6 @@ def save_briefing():
 
         return jsonify({"success": True, "redirect": "/admin"})
     except Exception as e:
-        print(e)
         return jsonify({"error": str(e)}), 500
 
 # 6. CHATBOT RAG / BRIEFING
@@ -453,15 +415,11 @@ def briefing_chat():
     data = request.json
     history = data.get('history', [])
     last_msg = data.get('message')
-
-    system = "Você é LIA, especialista em Briefing. Entreviste o cliente sobre Cores, Estilo e Seções do site. Seja breve."
-    
     try:
         model = genai.GenerativeModel('gemini-pro')
-        full_prompt = f"{system}\nHistórico: {history}\nCliente: {last_msg}"
-        response = model.generate_content(full_prompt)
+        response = model.generate_content(f"Você é LIA, especialista em Briefing. {last_msg}")
         return jsonify({"reply": response.text})
-    except Exception as e:
+    except:
         return jsonify({"reply": "Erro de conexão com a IA."})
 
 if __name__ == '__main__':
