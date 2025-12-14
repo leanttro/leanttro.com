@@ -8,3 +8,4 @@ requests
 mercadopago
 flask-login
 reportlab
+importlib-metadata

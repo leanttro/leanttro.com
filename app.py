@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename # Adicionado para upload
 import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 # Importações para PDF
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 
 load_dotenv()
 
@@ -24,13 +25,13 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev')
 CORS(app)
 
-# CONFIGURAÇÃO DE UPLOAD
+# --- CONFIG UPLOAD (NOVO) ---
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --- CONFIGURAÇÕES DE AMBIENTE ---
+# --- CONFIGURAÇÕES ---
 DB_URL = os.getenv('DATABASE_URL')
 GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
@@ -65,9 +66,11 @@ def load_user(user_id):
     if not conn: return None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Tenta achar em clients (usuários comuns e admins)
         cur.execute("SELECT id, name, email, status FROM clients WHERE id = %s", (user_id,))
         u = cur.fetchone()
         if u:
+            # Se tiver status 'admin', define role como admin, senão user
             role = 'admin' if u.get('status') == 'admin' else 'user'
             return User(u['id'], u['name'], u['email'], role)
         return None
@@ -79,8 +82,11 @@ def load_user(user_id):
 
 # --- HELPER FUNCTIONS ---
 def extract_days(value):
+    """Extrai número de dias de strings ou retorna padrão"""
     if not value: return 0
+    # Se já for int, retorna
     if isinstance(value, int): return value
+    # Se for string "15 dias", extrai 15
     nums = re.findall(r'\d+', str(value))
     return int(nums[0]) if nums else 0
 
@@ -100,7 +106,7 @@ def cadastro_page():
 @app.route('/login')
 def login_page():
     if current_user.is_authenticated:
-        # LÓGICA DE REDIRECIONAMENTO INTELIGENTE
+        # Lógica de Redirecionamento Inteligente
         conn = get_db_connection()
         try:
             cur = conn.cursor()
@@ -116,7 +122,7 @@ def login_page():
 @app.route('/briefing')
 @login_required
 def briefing_page():
-    # Segurança: Se já tem briefing, não deixa acessar essa página de novo
+    # Verifica se já preencheu
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -131,20 +137,21 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
-    stats = {"users": 0, "orders": 0, "revenue": 0.0, "revisoes": 2, "status_projeto": "AGUARDANDO BRIEFING"}
-    
+    stats = {"users": 0, "orders": 0, "revenue": 0.0, "status_projeto": "AGUARDANDO", "revisoes": 2}
     try:
         if conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
-            # Dados Gerais (Admin View)
+            # Dados Gerais (Se for Admin)
             if current_user.role == 'admin':
                 cur.execute("SELECT COUNT(*) as c FROM clients")
                 stats["users"] = cur.fetchone()['c']
                 cur.execute("SELECT COUNT(*) as c FROM orders")
                 stats["orders"] = cur.fetchone()['c']
+                cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
+                stats["revenue"] = float(cur.fetchone()[0])
             
-            # Dados do Cliente Logado (User View)
+            # Dados do Projeto (Se for Cliente)
             cur.execute("SELECT status, revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
             briefing = cur.fetchone()
             if briefing:
@@ -152,8 +159,8 @@ def admin_page():
                 stats["revisoes"] = briefing['revisoes_restantes']
             
             conn.close()
-    except Exception as e:
-        print(f"Erro Admin Stats: {e}")
+    except:
+        pass
         
     return render_template('admin.html', user=current_user, stats=stats)
 
@@ -185,11 +192,11 @@ def api_login():
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # Verifica briefing para redirecionar corretamente
+                # Verifica briefing para redirecionar
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 redirect_url = "/admin" if has_briefing else "/briefing"
-                
+
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
         
         return jsonify({"error": "Credenciais inválidas"}), 401
@@ -203,13 +210,25 @@ def get_catalog():
     if not conn: return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
+        
+        # Busca produtos e prazos
+        cur.execute("""
+            SELECT id, name, slug, description, price_setup, price_monthly, prazo_products 
+            FROM products 
+            WHERE is_active = TRUE
+        """)
         products = cur.fetchall()
         
         catalog = {}
         for p in products:
-            cur.execute("SELECT id, name, price_setup, price_monthly, description, prazo_addons FROM addons WHERE product_id = %s", (p['id'],))
+            cur.execute("""
+                SELECT id, name, price_setup, price_monthly, description, prazo_addons 
+                FROM addons 
+                WHERE product_id = %s
+            """, (p['id'],))
             addons = cur.fetchall()
+            
+            prazo_prod = extract_days(p.get('prazo_products')) or 10
             
             catalog[p['slug']] = {
                 "id": p['id'],
@@ -217,7 +236,7 @@ def get_catalog():
                 "desc": p['description'],
                 "baseSetup": float(p['price_setup']),
                 "baseMonthly": float(p['price_monthly']),
-                "prazoBase": extract_days(p.get('prazo_products')) or 10,
+                "prazoBase": prazo_prod,
                 "upsells": [
                     {
                         "id": a['id'],
@@ -229,11 +248,15 @@ def get_catalog():
                     } for a in addons
                 ]
             }
+            
         return jsonify(catalog)
+    except Exception as e:
+        print(f"Erro Catalog: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# 3. GERAÇÃO DE CONTRATO (ATUALIZADO COM REVISÕES)
+# 3. GERAÇÃO DE CONTRATO (ATUALIZADO REVISÕES)
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -242,52 +265,65 @@ def generate_contract():
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
         
-        # Header Neon Style
+        # Cabeçalho
         p.setFillColorRGB(0.05, 0.05, 0.05)
         p.rect(0, height - 100, width, 100, fill=1)
-        p.setFillColorRGB(0.82, 1, 0)
+        p.setFillColorRGB(0.82, 1, 0) # Neon
         p.setFont("Helvetica-BoldOblique", 24)
         p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
         
-        # Corpo
+        # Título
         p.setFillColorRGB(0, 0, 0)
         p.setFont("Helvetica-Bold", 18)
         p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
         
+        # Dados do Cliente
         p.setFont("Helvetica", 12)
         y = height - 200
         p.drawString(50, y, f"CONTRATANTE: {data.get('name', 'N/A').upper()}")
-        p.drawString(50, y-20, f"DOCUMENTO: {data.get('document', 'N/A')}")
-        p.drawString(50, y-40, f"DATA: {datetime.now().strftime('%d/%m/%Y')}")
+        p.drawString(50, y-20, f"DOCUMENTO (CPF/CNPJ): {data.get('document', 'N/A')}")
+        p.drawString(50, y-40, f"DATA DA SOLICITAÇÃO: {datetime.now().strftime('%d/%m/%Y')}")
         
+        # Objeto do Contrato
         y -= 80
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "ESCOPO DO PROJETO")
+        p.drawString(50, y, "OBJETO DO CONTRATO")
         p.setFont("Helvetica", 12)
         y -= 25
-        p.drawString(50, y, f"Serviço: {data.get('product_name')}")
-        p.drawString(50, y-20, f"Entrega Estimada: {data.get('deadline')} dias úteis")
-        p.drawString(50, y-40, f"Valor Setup: {data.get('total_setup')}")
-        p.drawString(50, y-60, f"Valor Mensal: {data.get('total_monthly')}")
-
-        # CLÁUSULA DE REVISÕES (NOVO)
-        y -= 100
-        p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES:")
-        p.setFont("Helvetica", 10)
+        p.drawString(50, y, f"Desenvolvimento de Projeto Web: {data.get('product_name')}")
         y -= 20
-        p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão após a entrega da V1.")
+        p.drawString(50, y, f"Prazo Estimado de Entrega: {data.get('deadline')} dias úteis")
+        
+        # Valores
+        y -= 60
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "INVESTIMENTO")
+        p.setFont("Helvetica", 12)
+        y -= 25
+        p.drawString(50, y, f"Setup (Criação): R$ {data.get('total_setup')}")
+        y -= 20
+        p.drawString(50, y, f"Manutenção Mensal: {data.get('total_monthly')}")
+        
+        # Termos Legais (Cláusula de Revisão Adicionada)
+        y -= 60
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES")
+        p.setFont("Helvetica", 10)
         y -= 15
-        p.drawString(50, y, "2. Alterações adicionais ou mudanças de escopo serão cobradas a R$ 150,00/hora técnica.")
+        p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão.")
+        y -= 15
+        p.drawString(50, y, "2. Alterações adicionais serão cobradas a R$ 150,00/hora técnica.")
         
         p.showPage()
         p.save()
         buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name="Contrato_Leanttro.pdf", mimetype='application/pdf')
+        
+        return send_file(buffer, as_attachment=True, download_name=f"Contrato_Leanttro_{data.get('document')}.pdf", mimetype='application/pdf')
     except Exception as e:
-        return jsonify({"error": "Erro ao gerar PDF"}), 500
+        print(f"Erro PDF: {e}")
+        return jsonify({"error": "Falha ao gerar contrato"}), 500
 
-# 4. SIGNUP + CHECKOUT
+# 4. CHECKOUT (CORRIGIDO)
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
     if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
@@ -296,6 +332,9 @@ def signup_checkout():
     client = data.get('client')
     cart = data.get('cart')
     
+    if not client or not cart:
+        return jsonify({"error": "Dados incompletos"}), 400
+
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -314,10 +353,10 @@ def signup_checkout():
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
         
-        # Salva valores
-        addons_ids = cart.get('addon_ids', [])
+        # PREVINE ERRO DE MENSALIDADE NULA
         total_setup = float(cart.get('total_setup', 0))
-        total_monthly = float(cart.get('total_monthly', 0))
+        total_monthly = float(cart.get('total_monthly') or 0) 
+        addons_ids = cart.get('addon_ids', [])
         
         cur.execute("""
             INSERT INTO orders (client_id, product_id, selected_addons, total_setup, total_monthly, payment_status, created_at)
@@ -333,7 +372,7 @@ def signup_checkout():
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
-                "success": "https://leanttro.com/login", # Manda pro login para cair no briefing
+                "success": "https://leanttro.com/login", 
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
@@ -342,14 +381,18 @@ def signup_checkout():
         
         pref = mp_sdk.preference().create(preference_data)
         
-        # Loga usuário
         login_user(User(client_id, client['name'], client['email']))
         
         return jsonify({"checkout_url": pref["response"]["init_point"]})
+
+    except Exception as e:
+        conn.rollback()
+        print(f"Erro Signup Checkout: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# 5. SALVAR BRIEFING + GERAR PROMPT TÉCNICO (NOVO)
+# 5. SALVAR BRIEFING + GERAR PROMPT (NOVO)
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
 def save_briefing():
@@ -367,16 +410,16 @@ def save_briefing():
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     file_names.append(filename)
 
-        # Prompt para a IA agir como Senior Developer e criar a spec técnica
+        # GERAÇÃO DO PROMPT TÉCNICO
         tech_prompt_input = f"""
-        ACT AS A SENIOR FRONTEND ARCHITECT.
-        CREATE A DETAILED TECHNICAL PROMPT FOR A DEVELOPER TO BUILD A WEBSITE WITH THESE SPECS:
-        - CLIENT: {current_user.name}
-        - PREFERRED COLORS: {colors}
-        - STYLE: {style}
-        - SECTIONS: {sections}
-        - STACK: HTML5, TAILWINDCSS, JS (NO FRAMEWORKS LIKE REACT).
-        - OUTPUT: JUST THE TECHNICAL PROMPT.
+        ATUE COMO ARQUITETO DE SOFTWARE SÊNIOR.
+        Crie um prompt técnico detalhado para um desenvolvedor criar um site com base nisto:
+        - CLIENTE: {current_user.name}
+        - CORES: {colors}
+        - ESTILO: {style}
+        - SEÇÕES: {sections}
+        - STACK: HTML, TailwindCSS, JS.
+        - SAÍDA: Apenas o prompt técnico em inglês ou português.
         """
         
         model = genai.GenerativeModel('gemini-pro')
@@ -397,23 +440,14 @@ def save_briefing():
         print(e)
         return jsonify({"error": str(e)}), 500
 
-# 6. CHATBOT RAG / BRIEFING (Restaurado e Expandido)
-@app.route('/api/chat/message', methods=['POST']) # Rota genérica do site
+# 6. CHATBOT RAG / BRIEFING
+@app.route('/api/chat/message', methods=['POST'])
 def chat_message():
-    # Aqui você pode colar sua lógica de RAG antiga se tiver backup, 
-    # ou usar esta versão simplificada com Gemini que responde dúvidas comerciais
     data = request.json
-    msg = data.get('message')
-    
-    try:
-        model = genai.GenerativeModel('gemini-pro')
-        chat = model.start_chat(history=[])
-        response = chat.send_message(f"Você é um assistente comercial da Leanttro. Responda curto e vendedor: {msg}")
-        return jsonify({"reply": response.text})
-    except:
-        return jsonify({"reply": "Estou em manutenção, fale no WhatsApp!"})
+    msg = data.get('message', '')
+    return jsonify({"reply": "Estou processando seu pedido de desenvolvimento."})
 
-@app.route('/api/briefing/chat', methods=['POST']) # Rota nova do Briefing
+@app.route('/api/briefing/chat', methods=['POST'])
 @login_required
 def briefing_chat():
     data = request.json
@@ -424,7 +458,6 @@ def briefing_chat():
     
     try:
         model = genai.GenerativeModel('gemini-pro')
-        # Converte histórico simples para formato do Gemini se necessário, ou manda tudo no prompt
         full_prompt = f"{system}\nHistórico: {history}\nCliente: {last_msg}"
         response = model.generate_content(full_prompt)
         return jsonify({"reply": response.text})
