@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FINALIZAR CONTRATAÇÃO | LEANTTRO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&family=Kanit:ital,wght@0,400;0,800;1,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { ln: { neon: '#D2FF00', black: '#050505', carbon: '#111111' } },
+                    fontFamily: { sans: ['Kanit'], mono: ['Chakra Petch'] }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-ln-black text-white min-h-screen flex flex-col selection:bg-ln-neon selection:text-black">
+
+    <header class="border-b border-white/10 py-6 bg-ln-black/90 backdrop-blur fixed w-full z-50">
+        <div class="max-w-6xl mx-auto px-6 flex justify-between items-center">
+            <div class="text-2xl font-black italic tracking-tighter">LEAN<span class="text-ln-neon">TTRO</span>.</div>
+            <div class="font-mono text-xs text-gray-500">AMBIENTE SEGURO <i class="fa-solid fa-lock text-ln-neon ml-1"></i></div>
+        </div>
+    </header>
+
+    <main class="flex-grow pt-32 pb-20 px-6">
+        <div class="max-w-6xl mx-auto grid md:grid-cols-2 gap-12">
+            
+            <div>
+                <h1 class="text-4xl font-black italic uppercase mb-2">RESUMO DO <span class="text-ln-neon">PEDIDO</span></h1>
+                <p class="font-mono text-gray-500 text-sm mb-8">// CONFIRA O QUE SERÁ DESENVOLVIDO</p>
+
+                <div class="bg-ln-carbon border border-white/10 p-8 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-2 bg-ln-neon text-black font-bold font-mono text-xs uppercase">
+                        PRAZO ESTIMADO: <span id="displayPrazo">--</span> DIAS ÚTEIS
+                    </div>
+
+                    <div class="mb-6 border-b border-white/10 pb-6">
+                        <div class="font-mono text-xs text-gray-500 mb-1">PROJETO PRINCIPAL</div>
+                        <h2 id="prodName" class="text-2xl font-bold italic text-white">Carregando...</h2>
+                        <div id="prodPrice" class="font-mono text-ln-neon">R$ 0,00</div>
+                    </div>
+
+                    <div id="addonsList" class="space-y-4 mb-8">
+                        </div>
+
+                    <div class="flex justify-between items-end border-t border-white/10 pt-6">
+                        <div>
+                            <div class="font-mono text-xs text-gray-500">INVESTIMENTO TOTAL (SETUP)</div>
+                            <div id="totalSetup" class="text-3xl font-black text-white">R$ 0,00</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-mono text-xs text-gray-500">MANUTENÇÃO MENSAL</div>
+                            <div id="totalMonthly" class="text-lg font-bold text-ln-neon">R$ 0,00/mês</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex items-center gap-4 p-4 bg-blue-900/20 border border-blue-500/30 rounded text-sm text-blue-200">
+                    <i class="fa-solid fa-info-circle text-xl"></i>
+                    <p>O prazo de entrega começa a contar após o envio de todo o material (logo, textos) pelo cliente.</p>
+                </div>
+            </div>
+
+            <div class="bg-white/5 border border-white/10 p-8 md:p-10">
+                <h2 class="text-2xl font-black italic uppercase mb-6">SEUS DADOS</h2>
+                
+                <form id="signupForm" class="space-y-5" onsubmit="handleSignup(event)">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block font-mono text-xs text-gray-400 mb-2">NOME COMPLETO / EMPRESA</label>
+                            <input type="text" id="name" required class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon focus:outline-none placeholder-gray-700 font-mono">
+                        </div>
+                        <div>
+                            <label class="block font-mono text-xs text-gray-400 mb-2">CPF OU CNPJ</label>
+                            <input type="text" id="document" required class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon focus:outline-none placeholder-gray-700 font-mono">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">E-MAIL (SERÁ SEU LOGIN)</label>
+                        <input type="email" id="email" required class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon focus:outline-none placeholder-gray-700 font-mono">
+                    </div>
+
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">WHATSAPP (COM DDD)</label>
+                        <input type="tel" id="whatsapp" required class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon focus:outline-none placeholder-gray-700 font-mono">
+                    </div>
+
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">CRIE UMA SENHA</label>
+                        <input type="password" id="password" required class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon focus:outline-none placeholder-gray-700 font-mono">
+                    </div>
+
+                    <div class="pt-6 border-t border-white/10">
+                        <div class="flex items-center gap-3 mb-4">
+                            <input type="checkbox" id="terms" required class="w-5 h-5 accent-ln-neon bg-black border-gray-600">
+                            <label for="terms" class="text-xs text-gray-400 font-mono">
+                                Li e concordo com os termos. <a href="#" onclick="downloadContract()" class="text-ln-neon underline hover:text-white">BAIXAR MINUTA DO CONTRATO (PDF)</a>
+                            </label>
+                        </div>
+
+                        <button type="submit" id="btnPay" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-lg hover:bg-white transition-all transform hover:-translate-y-1">
+                            CRIAR CONTA E PAGAR
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // 1. Carregar Dados do LocalStorage
+        const cartData = JSON.parse(localStorage.getItem('leanttro_cart'));
+
+        if (!cartData) {
+            alert("Carrinho vazio. Redirecionando...");
+            window.location.href = '/';
+        }
+
+        function formatBRL(val) { return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+        // 2. Preencher Resumo Visual
+        document.getElementById('prodName').innerText = cartData.product.name;
+        document.getElementById('prodPrice').innerText = formatBRL(cartData.product.price);
+        document.getElementById('displayPrazo').innerText = cartData.prazoTotal;
+        document.getElementById('totalSetup').innerText = formatBRL(cartData.totalSetup);
+        document.getElementById('totalMonthly').innerText = formatBRL(cartData.totalMonthly) + '/mês';
+
+        const addonsContainer = document.getElementById('addonsList');
+        if (cartData.addons.length > 0) {
+            cartData.addons.forEach(addon => {
+                addonsContainer.innerHTML += `
+                    <div class="flex justify-between items-center text-sm border-l-2 border-ln-neon pl-3">
+                        <span class="text-gray-300 font-mono">+ ${addon.name}</span>
+                        <span class="text-white font-bold">${formatBRL(addon.price)}</span>
+                    </div>`;
+            });
+        } else {
+            addonsContainer.innerHTML = '<div class="text-gray-600 font-mono text-xs italic">Nenhum adicional selecionado.</div>';
+        }
+
+        // 3. Função: Baixar Contrato
+        async function downloadContract() {
+            const name = document.getElementById('name').value;
+            const doc = document.getElementById('document').value;
+
+            if(!name) { alert("Preencha seu nome primeiro para gerar o contrato."); return; }
+
+            try {
+                const response = await fetch('/api/generate_contract', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: name,
+                        document: doc,
+                        product_name: cartData.product.name,
+                        deadline: cartData.prazoTotal,
+                        total_setup: cartData.totalSetup,
+                        total_monthly: cartData.totalMonthly
+                    })
+                });
+                
+                if(response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = "Contrato_Leanttro.pdf";
+                    document.body.appendChild(a); 
+                    a.click();
+                    a.remove();
+                } else {
+                    alert("Erro ao gerar PDF.");
+                }
+            } catch (e) { console.error(e); alert("Erro de conexão."); }
+        }
+
+        // 4. Função: Cadastro + Checkout
+        async function handleSignup(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btnPay');
+            const originalText = btn.innerText;
+            btn.innerText = "PROCESSANDO...";
+            btn.disabled = true;
+
+            const clientData = {
+                name: document.getElementById('name').value,
+                document: document.getElementById('document').value,
+                email: document.getElementById('email').value,
+                whatsapp: document.getElementById('whatsapp').value,
+                password: document.getElementById('password').value
+            };
+
+            const payload = {
+                client: clientData,
+                cart: {
+                    product_id: cartData.product.id,
+                    addon_ids: cartData.addons.map(a => a.id),
+                    total_setup: cartData.totalSetup
+                }
+            };
+
+            try {
+                const response = await fetch('/api/signup_checkout', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.checkout_url) {
+                    // Limpa carrinho e redireciona para MP
+                    localStorage.removeItem('leanttro_cart');
+                    window.location.href = data.checkout_url;
+                } else {
+                    alert("Erro: " + (data.error || "Falha no cadastro."));
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Erro de conexão.");
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

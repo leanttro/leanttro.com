@@ -124,7 +124,6 @@
             0%, 80%, 100% { transform: scale(0); }
             40% { transform: scale(1); }
         }
-        /* Classes para transição suave dos estados do chat */
         .chat-hidden-bottom {
             transform: translateY(20px);
             opacity: 0;
@@ -417,20 +416,20 @@
                     </div>
                     
                     <div class="flex items-center justify-between mb-4 px-1">
-                        <a href="#" class="text-[10px] font-mono text-gray-400 hover:text-ln-neon transition-colors border-b border-gray-600 hover:border-ln-neon">
-                            <i class="fa-solid fa-file-contract mr-1"></i> LER MINUTA DO CONTRATO (PDF)
-                        </a>
+                        <div class="text-[10px] font-mono text-gray-400 border-b border-gray-600">
+                             <i class="fa-solid fa-file-contract mr-1"></i> CONTRATO GERADO NO PRÓXIMO PASSO
+                        </div>
                         <div class="text-[10px] font-mono text-ln-neon animate-pulse">
                             <i class="fa-solid fa-lock mr-1"></i> AMBIENTE SEGURO
                         </div>
                     </div>
 
-                    <button onclick="finalizarPagamentoMP()" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-lg hover:bg-white transition-all transform skew-x-[-10deg] group">
+                    <button onclick="irParaCadastro()" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-lg hover:bg-white transition-all transform skew-x-[-10deg] group">
                         <span class="transform skew-x-[10deg] inline-block flex items-center justify-center gap-2">
-                            PAGAR E GERAR CONTRATO <i class="fa-solid fa-arrow-right -rotate-45 group-hover:rotate-0 transition-transform"></i>
+                            CONTRATAR AGORA <i class="fa-solid fa-arrow-right -rotate-45 group-hover:rotate-0 transition-transform"></i>
                         </span>
                     </button>
-                    <p class="text-center text-[10px] font-mono text-gray-600 mt-2">PROCESSADO VIA MERCADO PAGO</p>
+                    <p class="text-center text-[10px] font-mono text-gray-600 mt-2">DADOS E PAGAMENTO NA PRÓXIMA TELA</p>
                 </div>
             </div>
         </div>
@@ -508,13 +507,11 @@
             }
         }
         
-        // Inicia o chat no estado 'peek' (janela média)
         document.addEventListener('DOMContentLoaded', () => setChatState('peek'));
 
 
         // === 2. LÓGICA DE PRODUTOS E CHECKOUT (CONECTADO AO DB) ===
         
-        // Mapeamento visual (Ícones) - Como o DB não tem HTML, definimos aqui
         const iconMap = {
             'site-institucional': '<i class="fa-solid fa-user-tie"></i>',
             'loja-virtual': '<i class="fa-solid fa-shop"></i>',
@@ -522,8 +519,6 @@
             'projetos-corp': '<i class="fa-solid fa-building"></i>'
         };
 
-        // Mapeamento de Slugs (HTML antigo -> Slug do Banco)
-        // Isso garante que os botões existentes funcionem com os dados novos
         const slugMap = {
             'presenca': 'site-institucional',
             'ecommerce': 'loja-virtual',
@@ -541,14 +536,12 @@
         const displaySetup = document.getElementById('displayTotalSetup');
         const displayMonthly = document.getElementById('displayTotalMensal');
 
-        // Busca dados reais do banco ao carregar a página
         async function loadCatalogFromDB() {
             try {
-                const res = await fetch('/api/catalog');
+                const res = await fetch('/api/catalog'); // Rota corrigida
                 if(!res.ok) throw new Error("Falha na API");
                 const data = await res.json();
                 
-                // Enriquece os dados com os ícones locais
                 for (const [slug, prod] of Object.entries(data)) {
                     prod.icon = iconMap[slug] || '<i class="fa-solid fa-code"></i>';
                 }
@@ -556,7 +549,6 @@
                 console.log("Catálogo carregado com sucesso:", catalog);
             } catch (e) {
                 console.error("Erro ao carregar catálogo", e);
-                // Não mostramos erro visual para não assustar o usuário, mas o console loga
             }
         }
         document.addEventListener('DOMContentLoaded', loadCatalogFromDB);
@@ -565,7 +557,6 @@
             return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
 
-        // Abre/Fecha detalhes dos addons
         function toggleDetail(event, id) {
             event.preventDefault(); event.stopPropagation(); 
             const content = document.getElementById(`detail-${id}`);
@@ -578,14 +569,12 @@
             arrow.classList.toggle('rotate-180');
         }
 
-        // Abre o Modal com dados do Banco
         function openConfigurator(htmlSlug) {
             if (Object.keys(catalog).length === 0) {
                 alert("Aguarde, carregando tabela de preços...");
                 return;
             }
 
-            // Converte o ID do botão HTML para o Slug do Banco
             const dbSlug = slugMap[htmlSlug] || htmlSlug;
             
             currentProduct = catalog[dbSlug];
@@ -596,7 +585,6 @@
                 return;
             }
 
-            // Preenche o modal
             document.getElementById('modalTitle').innerText = currentProduct.title;
             document.getElementById('modalIconContainer').innerHTML = currentProduct.icon;
             document.getElementById('modalDesc').innerText = currentProduct.desc;
@@ -605,7 +593,6 @@
             const optionsContainer = document.getElementById('modalOptions');
             optionsContainer.innerHTML = '';
 
-            // Gera os addons (Upsells) dinamicamente
             currentProduct.upsells.forEach(opt => {
                 const uniqueId = opt.id; 
                 const html = `
@@ -650,7 +637,6 @@
             document.body.style.overflow = 'auto';
         }
 
-        // Atualiza preço visualmente (O cálculo real final é feito no backend)
         function calculateTotal() {
             if (!currentProduct) return;
             let totalSetup = currentProduct.baseSetup;
@@ -669,50 +655,45 @@
             displayMonthly.innerText = formatBRL(totalMonthly) + '/mês';
         }
 
-        // Finaliza enviando IDs para o Backend (Seguro)
-        async function finalizarPagamentoMP() {
-            const btn = document.querySelector('button[onclick="finalizarPagamentoMP()"]');
-            const originalContent = btn.innerHTML;
-
-            btn.innerHTML = `<span class="transform skew-x-[10deg] inline-block animate-pulse">GERANDO LINK...</span>`;
-            btn.classList.add('opacity-75', 'cursor-not-allowed');
-            btn.disabled = true;
+        // --- NOVA FUNÇÃO DE REDIRECIONAMENTO ---
+        function irParaCadastro() {
+            if (!currentProduct) return;
 
             const selectedAddons = [];
+            let prazoAddons = 0;
+            
             document.querySelectorAll('#modalOptions input[type="checkbox"]:checked').forEach(cb => {
-                selectedAddons.push(cb.value); // Envia o ID do addon
+                const addonObj = currentProduct.upsells.find(u => u.id == cb.value);
+                if(addonObj) {
+                    selectedAddons.push({
+                        id: addonObj.id,
+                        name: addonObj.label,
+                        price: addonObj.priceSetup,
+                        prazo: addonObj.prazoExtra || 2 
+                    });
+                    prazoAddons += (addonObj.prazoExtra || 2);
+                }
             });
 
-            try {
-                const response = await fetch('/api/checkout/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_slug: currentProductSlug, // Identifica o produto base
-                        addon_ids: selectedAddons         // Identifica os extras
-                    })
-                });
+            const prazoTotal = (currentProduct.prazoBase || 10) + prazoAddons;
 
-                const data = await response.json();
+            const cartData = {
+                product: {
+                    id: currentProduct.id,
+                    name: currentProduct.title,
+                    slug: currentProductSlug,
+                    price: currentProduct.baseSetup,
+                    monthly: currentProduct.baseMonthly
+                },
+                addons: selectedAddons,
+                totalSetup: currentSetup, 
+                totalMonthly: currentMonthly,
+                prazoTotal: prazoTotal
+            };
 
-                if (data.checkout_url) {
-                    window.location.href = data.checkout_url;
-                } else {
-                    alert('Erro: ' + (data.error || 'Falha ao processar pedido.'));
-                    restaurarBotao();
-                }
-
-            } catch (error) {
-                console.error('Erro:', error);
-                alert('Erro de conexão. Verifique sua internet.');
-                restaurarBotao();
-            }
-
-            function restaurarBotao() {
-                btn.innerHTML = originalContent;
-                btn.classList.remove('opacity-75', 'cursor-not-allowed');
-                btn.disabled = false;
-            }
+            // Salva e Redireciona
+            localStorage.setItem('leanttro_cart', JSON.stringify(cartData));
+            window.location.href = '/cadastro';
         }
 
         document.addEventListener('keydown', (e) => { if(e.key === "Escape") closeModal(); });
