@@ -123,7 +123,7 @@ def api_login():
         conn.close()
 
 # 2. CATÁLOGO DINÂMICO (Para popular o index.html)
-@app.route('/api/products/catalog', methods=['GET'])
+@app.route('/api/catalog', methods=['GET'])
 def get_catalog():
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Erro DB"}), 500
