@@ -5,7 +5,7 @@ import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -101,7 +101,7 @@ def cadastro_page():
 @app.route('/login')
 def login_page():
     if current_user.is_authenticated:
-        # Redirecionamento Inteligente: Admin ou Briefing
+        # Lógica inteligente: Verifica briefing antes de mandar pro admin
         conn = get_db_connection()
         try:
             cur = conn.cursor()
@@ -117,7 +117,6 @@ def login_page():
 @app.route('/briefing')
 @login_required
 def briefing_page():
-    # Se já tem briefing, bloqueia e manda pro admin
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -145,7 +144,7 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            # Busca status do briefing para o cliente
+            # Dados específicos do cliente logado
             cur.execute("SELECT status, revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
             briefing = cur.fetchone()
             if briefing:
@@ -165,7 +164,6 @@ def logout():
 
 # --- ROTAS DE API (BACKEND) ---
 
-# 1. LOGIN
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.json
@@ -185,18 +183,17 @@ def api_login():
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # Verifica briefing para redirecionar corretamente
+                # Verifica se tem briefing
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 redirect_url = "/admin" if has_briefing else "/briefing"
-                
+
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
         
         return jsonify({"error": "Credenciais inválidas"}), 401
     finally:
         conn.close()
 
-# 2. CATÁLOGO
 @app.route('/api/catalog', methods=['GET'])
 def get_catalog():
     conn = get_db_connection()
@@ -232,13 +229,9 @@ def get_catalog():
                 ]
             }
         return jsonify(catalog)
-    except Exception as e:
-        print(f"Erro Catalog: {e}")
-        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# 3. GERAÇÃO DE CONTRATO (COM REVISÕES)
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -264,7 +257,7 @@ def generate_contract():
         
         y -= 80
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "ESCOPO DO PROJETO")
+        p.drawString(50, y, "ESCOPO E PRAZOS")
         p.setFont("Helvetica", 12)
         y -= 25
         p.drawString(50, y, f"Projeto: {data.get('product_name')}")
@@ -272,10 +265,9 @@ def generate_contract():
         p.drawString(50, y-40, f"Setup: {data.get('total_setup')}")
         p.drawString(50, y-60, f"Mensal: {data.get('total_monthly')}")
         
-        # CLÁUSULA DE REVISÃO
         y -= 100
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULA DE REVISÕES:")
+        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES")
         p.setFont("Helvetica", 10)
         y -= 20
         p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão.")
@@ -287,10 +279,9 @@ def generate_contract():
         buffer.seek(0)
         return send_file(buffer, as_attachment=True, download_name=f"Contrato.pdf", mimetype='application/pdf')
     except Exception as e:
-        print(f"Erro PDF: {e}")
-        return jsonify({"error": "Falha ao gerar contrato"}), 500
+        return jsonify({"error": "Erro PDF"}), 500
 
-# 4. CHECKOUT (CORRIGIDO PARA EVITAR ERRO DE MENSALIDADE)
+# 4. SIGNUP + CHECKOUT (CORRIGIDO ERROS DE JSON E NULL)
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
     if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
@@ -319,16 +310,20 @@ def signup_checkout():
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
         
-        # Correção para o erro da Imagem 5 (total_monthly null)
+        # --- CORREÇÃO DO BUG (JSONB e NULL) ---
+        addons_ids = cart.get('addon_ids', [])
+        # Converte lista para JSON String para o banco aceitar
+        addons_json = json.dumps(addons_ids) 
+        
+        # Previne erro de valor Nulo
         total_setup = float(cart.get('total_setup') or 0)
         total_monthly = float(cart.get('total_monthly') or 0)
-        addons_ids = cart.get('addon_ids', [])
         
         cur.execute("""
             INSERT INTO orders (client_id, product_id, selected_addons, total_setup, total_monthly, payment_status, created_at)
             VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
             RETURNING id
-        """, (client_id, cart['product_id'], addons_ids, total_setup, total_monthly))
+        """, (client_id, cart['product_id'], addons_json, total_setup, total_monthly))
         order_id = cur.fetchone()['id']
         
         conn.commit()
@@ -338,7 +333,7 @@ def signup_checkout():
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
-                "success": "https://leanttro.com/login", # Manda pro login para cair no briefing
+                "success": "https://leanttro.com/login", 
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
@@ -352,12 +347,12 @@ def signup_checkout():
 
     except Exception as e:
         conn.rollback()
-        print(f"Erro Checkout: {e}")
+        print(f"Erro Signup Checkout: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# 5. SALVAR BRIEFING + GERAR PROMPT (NOVO)
+# 5. SALVAR BRIEFING + GERAR PROMPT (NOVA FUNCIONALIDADE)
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
 def save_briefing():
@@ -375,19 +370,22 @@ def save_briefing():
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     file_names.append(filename)
 
-        # GERAÇÃO DO PROMPT TÉCNICO
         tech_prompt_input = f"""
-        ATUE COMO ARQUITETO DE SOFTWARE. Crie um prompt técnico para criar um site:
+        ATUE COMO ARQUITETO DE SOFTWARE. Crie um prompt técnico:
         - CLIENTE: {current_user.name}
         - CORES: {colors}
         - ESTILO: {style}
         - SEÇÕES: {sections}
         - STACK: HTML, TailwindCSS, JS.
-        - SAÍDA: Apenas o prompt técnico.
+        - OUTPUT: Apenas o prompt técnico.
         """
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(tech_prompt_input)
-        tech_prompt = response.text
+        
+        try:
+            model = genai.GenerativeModel('gemini-pro')
+            response = model.generate_content(tech_prompt_input)
+            tech_prompt = response.text
+        except:
+            tech_prompt = "Erro ao gerar com IA."
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -402,12 +400,13 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 6. CHATBOT RAG / BRIEFING
+# 6. CHATBOT RAG / BRIEFING (MANTIDO)
 @app.route('/api/chat/message', methods=['POST'])
 def chat_message():
+    # Rota original do Chatbot RAG (Mantida)
     data = request.json
     msg = data.get('message', '')
-    return jsonify({"reply": "Estou processando seu pedido de desenvolvimento."})
+    return jsonify({"reply": "Estou processando seu pedido."})
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
@@ -417,10 +416,10 @@ def briefing_chat():
     last_msg = data.get('message')
     try:
         model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"Você é LIA, especialista em Briefing. {last_msg}")
+        response = model.generate_content(f"Ajude com briefing: {last_msg}")
         return jsonify({"reply": response.text})
     except:
-        return jsonify({"reply": "Erro de conexão com a IA."})
+        return jsonify({"reply": "Erro IA"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
