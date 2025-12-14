@@ -4,7 +4,7 @@ import io
 import json
 import psycopg2
 import psycopg2.extras
-from datetime import datetime # Removido pytz para evitar erros
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -373,7 +373,7 @@ def save_briefing():
         """
         
         try:
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             response = model.generate_content(tech_prompt_input)
             tech_prompt = response.text
         except:
@@ -392,13 +392,13 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT CORRIGIDO (LELIS) ---
+# --- CHATBOT "LELIS" (CORRIGIDO E OTIMIZADO) ---
 @app.route('/api/chat/message', methods=['POST'])
 def chat_message():
     data = request.json
     msg = data.get('message', '')
     
-    # 1. Lógica Simples de Horário (Sem biblioteca extra)
+    # Lógica de horário nativa (sem bibliotecas extras que quebram o app)
     hora_atual = datetime.now().hour
     saudacao = "Bom dia"
     if 12 <= hora_atual < 18:
@@ -407,13 +407,13 @@ def chat_message():
         saudacao = "Boa noite"
 
     try:
-        # Tenta usar o modelo Flash (mais rápido), fallback para Pro se falhar
+        # Tenta usar o modelo Flash (mais rápido e estável), se não, vai pro Pro
         try:
             model = genai.GenerativeModel('gemini-1.5-flash')
         except:
             model = genai.GenerativeModel('gemini-pro')
         
-        # 2. Persona Lelis
+        # PROMPT LELIS: Vendedor Humano
         prompt = f"""
         Aja como Lelis, um consultor de vendas Sênior da agência Leanttro. 
         NÃO aja como uma IA. Aja como um humano falando no WhatsApp.
@@ -435,7 +435,8 @@ def chat_message():
         return jsonify({"reply": response.text})
     except Exception as e:
         print(f"Erro Gemini: {e}")
-        return jsonify({"reply": f"{saudacao}! Estou com uma demanda alta no momento. Clica no botão do WhatsApp lá em cima que eu te atendo agora mesmo? 🚀"})
+        # Mensagem de erro também na persona do Lelis, pra não quebrar a imersão
+        return jsonify({"reply": f"{saudacao}! A demanda tá gigante aqui agora. Clica no botão do WhatsApp ali em cima que eu te atendo rapidinho por lá? 🚀"})
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
@@ -443,7 +444,7 @@ def briefing_chat():
     data = request.json
     last_msg = data.get('message')
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(f"Você é LIA, especialista em Briefing. Ajude o cliente a definir o site. Cliente: {last_msg}")
         return jsonify({"reply": response.text})
     except:
