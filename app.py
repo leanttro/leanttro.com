@@ -4,8 +4,7 @@ import io
 import json
 import psycopg2
 import psycopg2.extras
-from datetime import datetime
-import pytz # NECESSÁRIO: pip install pytz
+from datetime import datetime # Removido pytz para evitar erros
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -393,19 +392,14 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT ATUALIZADO (LÓGICA Leanttro) ---
+# --- CHATBOT CORRIGIDO (LELIS) ---
 @app.route('/api/chat/message', methods=['POST'])
 def chat_message():
     data = request.json
     msg = data.get('message', '')
     
-    # 1. Lógica de Tempo para Saudação
-    try:
-        tz_br = pytz.timezone('America/Sao_Paulo') 
-        hora_atual = datetime.now(tz_br).hour
-    except:
-        hora_atual = datetime.now().hour # Fallback sem pytz
-    
+    # 1. Lógica Simples de Horário (Sem biblioteca extra)
+    hora_atual = datetime.now().hour
     saudacao = "Bom dia"
     if 12 <= hora_atual < 18:
         saudacao = "Boa tarde"
@@ -413,9 +407,13 @@ def chat_message():
         saudacao = "Boa noite"
 
     try:
-        model = genai.GenerativeModel('gemini-pro') # Ou gemini-1.5-flash se disponível
+        # Tenta usar o modelo Flash (mais rápido), fallback para Pro se falhar
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+        except:
+            model = genai.GenerativeModel('gemini-pro')
         
-        # 2. Prompt "Vendedor Humano - Lelis"
+        # 2. Persona Lelis
         prompt = f"""
         Aja como Lelis, um consultor de vendas Sênior da agência Leanttro. 
         NÃO aja como uma IA. Aja como um humano falando no WhatsApp.
@@ -429,7 +427,7 @@ def chat_message():
         1. Seja curto e direto (máximo 2 frases).
         2. Se o cliente apenas disser "oi", "olá" ou similar, responda: "{saudacao}! Tudo bem por aí? Como posso ajudar sua empresa hoje?"
         3. Se perguntar preço, fale o valor e já pergunte: "Esse valor cabe no seu orçamento atual?"
-        4. Use 1 emoji no máximo para não parecer infantil.
+        4. Use 1 emoji no máximo.
         5. Seu objetivo é fazer ele clicar nos planos ou tirar dúvida rápida.
         """
         
@@ -437,7 +435,7 @@ def chat_message():
         return jsonify({"reply": response.text})
     except Exception as e:
         print(f"Erro Gemini: {e}")
-        return jsonify({"reply": f"{saudacao}! Tive um pico de atendimentos aqui. Me chama no WhatsApp (botão no topo) que te respondo na hora? 🚀"})
+        return jsonify({"reply": f"{saudacao}! Estou com uma demanda alta no momento. Clica no botão do WhatsApp lá em cima que eu te atendo agora mesmo? 🚀"})
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
