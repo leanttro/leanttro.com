@@ -32,57 +32,52 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --- CONFIGURAÇÕES DO AMBIENTE ---
+# --- CONFIGURAÇÕES ---
 DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 
-# Tenta pegar a chave com os dois nomes possíveis pra não ter erro
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+# --- CORREÇÃO DA CHAVE (IGUAL AO SEU AMBIENTE QUE FUNCIONA) ---
+# Tenta pegar GEMINI_API_KEY primeiro (do Copia.py/Print), se não tiver, tenta GOOGLE_API_KEY
+GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 
-mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
-
-# --- CONFIGURAÇÃO DO GEMINI (IGUAL AO COPIA.PY) ---
 chat_model = None
 
-try:
-    if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
+# --- INICIALIZAÇÃO DO GEMINI (IGUAL AO COPIA.PY) ---
+if GEMINI_KEY:
+    try:
+        genai.configure(api_key=GEMINI_KEY)
         
-        # --- PERSONA LELIS (VENDEDOR) ---
+        # PERSONA LELIS (VENDEDOR)
         SYSTEM_PROMPT_LELIS = """
         VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
-        SUA MISSÃO: Vender sites e sistemas. Você não é suporte técnico, você é FECHADOR de negócios.
+        SUA MISSÃO: Fechar vendas. Você não é suporte, é VENDEDOR.
+        TOM: Agressivo, direto, confiante ("Lobo de Wall Street"), mas educado.
         
-        SEU TOM DE VOZ:
-        - Profissional, mas agressivo em vendas ("Lobo de Wall Street").
-        - Use gatilhos mentais de escassez ("Tenho poucas vagas na agenda").
-        - Direto ao ponto. Respostas curtas (máximo 2 parágrafos).
-        
-        SEUS PRODUTOS E PREÇOS:
-        1. Site Institucional (Ouro): Promoção de R$ 1.200 por R$ 499.
-        2. Loja Virtual (Diamante): R$ 999.
+        TABELA DE PREÇOS (OFERTA RELÂMPAGO):
+        1. Site Institucional: De R$ 1.200 por R$ 499 (Promoção).
+        2. Loja Virtual: R$ 999.
         3. Sistemas Custom: A partir de R$ 1.500.
 
-        REGRAS DE RESPOSTA:
-        1. Se perguntarem preço, dê o preço e pergunte: "Vamos fechar agora e garantir esse valor?"
-        2. Se perguntarem sobre o Leandro, diga: "O Leandro é o gênio técnico, eu sou quem resolve seu problema de negócios."
-        3. DIRECONAMENTO: Sempre tente levar o cliente para clicar no botão de WhatsApp.
-        4. O cliente não quer papo furado, ele quer solução.
+        REGRAS:
+        1. Respostas curtas (máximo 2 frases).
+        2. GATILHO: Sempre diga que a agenda está fechando ou restam poucas vagas.
+        3. Se perguntar preço, fale o valor e termine com: "Bora fechar agora?"
+        4. Se pedir contato humano, mande clicar no botão do WhatsApp.
         """
-
-        # Inicializa o modelo globalmente para performance (Igual ao Copia.py)
-        # Usando flash para ser rápido
+        
+        # Inicializa o modelo globalmente (Flash é mais rápido)
         chat_model = genai.GenerativeModel(
-            'gemini-1.5-flash', 
+            'gemini-1.5-flash',
             system_instruction=SYSTEM_PROMPT_LELIS
         )
-        print("✅ [Gemini] Chatbot Lelis inicializado com sucesso.")
-    else:
-        print("❌ ERRO: GEMINI_API_KEY/GOOGLE_API_KEY não encontrada.")
-except Exception as e:
-    print(f"❌ Erro ao inicializar Gemini: {e}")
-    chat_model = None
+        print("✅ Gemini (Lelis) inicializado com GEMINI_API_KEY.")
+    except Exception as e:
+        print(f"❌ Erro ao configurar Gemini: {e}")
+else:
+    print("❌ Nenhuma API Key do Google (GEMINI_API_KEY) encontrada.")
 
+
+mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
 
 # --- AUTHENTICATION SETUP ---
 login_manager = LoginManager()
@@ -435,34 +430,34 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS (ESTRUTURA IGUAL AO COPIA.PY) ---
-# Endpoint: /api/chat (Igual ao frontend antigo)
-# Lógica: Recebe histórico e usa sessão global
+# --- CHATBOT LELIS (CORRIGIDO PARA IGUALAR O COPIA.PY) ---
+# AQUI ESTAVA O ERRO: Usei /api/chat (igual ao Copia.py) em vez de /api/chat/message
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     print("\n--- [LELIS VENDAS] Recebido trigger para /api/chat ---")
     
     if not chat_model:
-        print("❌ ERRO: Chat Model não inicializado.")
-        return jsonify({'error': 'Serviço de IA Offline.'}), 503
+        print("❌ ERRO: Chat Model (Gemini) não está ativo.")
+        return jsonify({'error': 'Serviço de IA Offline (Verifique API KEY).'}), 503
 
     try:
         data = request.json
-        # Pega o HISTÓRICO igual ao Copia.py
+        # Lógica correta: Recebe o HISTÓRICO, não só a mensagem (igual Copia.py)
         history = data.get('conversationHistory', [])
         
+        # Converte para formato do Gemini
         gemini_history = []
         for message in history:
             role = 'user' if message['role'] == 'user' else 'model'
             gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
             
-        # Inicia o chat com histórico
+        # Inicia sessão com histórico
         chat_session = chat_model.start_chat(history=gemini_history)
         
-        # Pega a última mensagem ou usa padrão
+        # Pega a última mensagem
         user_message = history[-1]['text'] if history and history[-1]['role'] == 'user' else "Olá"
 
-        print(f"ℹ️  [Lelis] Cliente disse: '{user_message}'")
+        print(f"ℹ️  [Lelis] Cliente perguntou: '{user_message}'")
         
         response = chat_session.send_message(
             user_message,
@@ -472,18 +467,13 @@ def handle_chat():
                  'SEXUAL' : 'BLOCK_NONE', 'DANGEROUS' : 'BLOCK_NONE'
             }
         )
-        print(f"✅  [Lelis] Resposta gerada.")
+        print(f"✅  [Lelis] Respondeu.")
         return jsonify({'reply': response.text})
 
-    except genai.types.generation_types.StopCandidateException as stop_ex:
-        print(f"❌ API BLOQUEOU a resposta por segurança: {stop_ex}")
-        return jsonify({'reply': "Desculpe, não posso responder isso. Mas bora focar no seu projeto?"})
-    
     except Exception as e:
-        print(f"❌ ERRO CRÍTICO no endpoint /api/chat: {e}")
+        print(f"❌ ERRO CRÍTICO no CHAT: {e}")
         traceback.print_exc()
-        # Fallback de erro com a persona do Lelis
-        return jsonify({'reply': "Opa! Minha conexão deu uma oscilada aqui (muita gente chamando). Me chama no WhatsApp ali em cima que é mais garantido? 🚀"}), 200
+        return jsonify({'reply': "Minha conexão caiu... 🔌 Pode me chamar no WhatsApp? O botão tá ali em cima."}), 200
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
