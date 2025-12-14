@@ -36,17 +36,25 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 
-# --- CORREÇÃO DA CHAVE (IGUAL AO SEU AMBIENTE QUE FUNCIONA) ---
-# Tenta pegar GEMINI_API_KEY primeiro (do Copia.py/Print), se não tiver, tenta GOOGLE_API_KEY
+# --- CONFIGURAÇÃO GEMINI ---
 GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
-
 chat_model = None
 
-# --- INICIALIZAÇÃO DO GEMINI (IGUAL AO COPIA.PY) ---
 if GEMINI_KEY:
     try:
         genai.configure(api_key=GEMINI_KEY)
         
+        # --- DEBUG: LISTAR MODELOS DISPONÍVEIS NO LOG ---
+        print("\n--- DEBUG: LISTA DE MODELOS DO GOOGLE ---")
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    print(f"Modelo disponível: {m.name}")
+        except Exception as e_list:
+            print(f"Não foi possível listar modelos: {e_list}")
+        print("------------------------------------------\n")
+        # ------------------------------------------------
+
         # PERSONA LELIS (VENDEDOR)
         SYSTEM_PROMPT_LELIS = """
         VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
@@ -65,12 +73,19 @@ if GEMINI_KEY:
         4. Se pedir contato humano, mande clicar no botão do WhatsApp.
         """
         
-        # Inicializa o modelo globalmente (Flash é mais rápido)
-        chat_model = genai.GenerativeModel(
-            'gemini-pro',
-            system_instruction=SYSTEM_PROMPT_LELIS
-        )
-        print("✅ Gemini (Lelis) inicializado com GEMINI_API_KEY.")
+        # ALTERAÇÃO: Mudado para 'gemini-pro' para garantir compatibilidade
+        # Se 'gemini-pro' falhar, tente 'gemini-1.0-pro'
+        try:
+            chat_model = genai.GenerativeModel(
+                'gemini-pro',
+                system_instruction=SYSTEM_PROMPT_LELIS
+            )
+            print("✅ Gemini (Lelis) inicializado com GEMINI_API_KEY (Model: gemini-pro).")
+        except Exception as e_model:
+            # Fallback para caso a lib seja muito antiga e não suporte system_instruction no construtor
+            print(f"⚠️ Aviso: Falha ao iniciar com system_instruction ({e_model}). Tentando modo simples.")
+            chat_model = genai.GenerativeModel('gemini-pro')
+            
     except Exception as e:
         print(f"❌ Erro ao configurar Gemini: {e}")
 else:
@@ -411,7 +426,8 @@ def save_briefing():
         """
         
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # ALTERAÇÃO AQUI: Mudado para gemini-pro
+            model = genai.GenerativeModel('gemini-pro')
             response = model.generate_content(tech_prompt_input)
             tech_prompt = response.text
         except:
@@ -430,8 +446,7 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS (CORRIGIDO PARA IGUALAR O COPIA.PY) ---
-# AQUI ESTAVA O ERRO: Usei /api/chat (igual ao Copia.py) em vez de /api/chat/message
+# --- CHATBOT LELIS ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     print("\n--- [LELIS VENDAS] Recebido trigger para /api/chat ---")
@@ -442,7 +457,6 @@ def handle_chat():
 
     try:
         data = request.json
-        # Lógica correta: Recebe o HISTÓRICO, não só a mensagem (igual Copia.py)
         history = data.get('conversationHistory', [])
         
         # Converte para formato do Gemini
@@ -451,11 +465,15 @@ def handle_chat():
             role = 'user' if message['role'] == 'user' else 'model'
             gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
             
-        # Inicia sessão com histórico
         chat_session = chat_model.start_chat(history=gemini_history)
         
-        # Pega a última mensagem
-        user_message = history[-1]['text'] if history and history[-1]['role'] == 'user' else "Olá"
+        # Se for a primeira mensagem e só tiver o input do user agora
+        user_message = data.get('message', '') # Fallback se vier direto
+        if history and history[-1]['role'] == 'user':
+            user_message = history[-1]['text']
+
+        # Se não tiver histórico nem mensagem (erro), define um padrão
+        if not user_message: user_message = "Olá"
 
         print(f"ℹ️  [Lelis] Cliente perguntou: '{user_message}'")
         
@@ -481,7 +499,8 @@ def briefing_chat():
     data = request.json
     last_msg = data.get('message')
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # ALTERAÇÃO AQUI: Mudado para gemini-pro
+        model = genai.GenerativeModel('gemini-pro')
         response = model.generate_content(f"Você é LIA, especialista em Briefing. Ajude o cliente a definir o site. Cliente: {last_msg}")
         return jsonify({"reply": response.text})
     except:
