@@ -35,14 +35,14 @@
         <form onsubmit="handleLogin(event)" class="space-y-6">
             <div>
                 <label class="block font-mono text-xs text-ln-neon mb-2">E-MAIL DE ACESSO</label>
-                <input type="email" required 
+                <input type="email" id="email" required 
                        class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon focus:outline-none focus:ring-1 focus:ring-ln-neon transition-all font-mono placeholder-gray-700"
                        placeholder="cliente@email.com">
             </div>
 
             <div>
                 <label class="block font-mono text-xs text-ln-neon mb-2">SENHA</label>
-                <input type="password" required 
+                <input type="password" id="password" required 
                        class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon focus:outline-none focus:ring-1 focus:ring-ln-neon transition-all font-mono placeholder-gray-700"
                        placeholder="••••••••">
             </div>
@@ -61,18 +61,40 @@
     </div>
 
     <script>
-        function handleLogin(e) {
+        async function handleLogin(e) {
             e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
             const btn = e.target.querySelector('button');
             const originalText = btn.innerText;
             
-            btn.innerText = "AUTENTICANDO...";
+            btn.innerText = "VERIFICANDO...";
             btn.classList.add('opacity-75', 'cursor-not-allowed');
+            btn.disabled = true;
 
-            // Simulação de Login (Aqui entraria a chamada pra API)
-            setTimeout(() => {
-                window.location.href = "/admin";
-            }, 1500);
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    window.location.href = data.redirect;
+                } else {
+                    alert("Erro: " + (data.error || "Acesso negado"));
+                    btn.innerText = originalText;
+                    btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                alert("Erro de conexão com o servidor.");
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }
     </script>
 </body>

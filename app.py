@@ -1,35 +1,60 @@
 import os
 import psycopg2
 import psycopg2.extras
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_cors import CORS
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import google.generativeai as genai
 import mercadopago
-import requests
 from dotenv import load_dotenv
 
 # Carrega variáveis de ambiente
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev') # Necessário para Sessão
 CORS(app)
 
 # --- CONFIGURAÇÕES GLOBAIS ---
-# 1. Banco de Dados
 DB_URL = os.getenv('DATABASE_URL')
-
-# 2. IA (Gemini)
 GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
+MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
+
+# Configuração IA
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
-# 3. Mercado Pago
-MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
+# Configuração Mercado Pago
 mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
 
-# 4. Evolution API (Para envio de mensagens no Whats)
-EVOLUTION_URL = os.getenv('EVOLUTION_API_URL') # Ex: https://evo.leanttro.com
-EVOLUTION_KEY = os.getenv('EVOLUTION_API_KEY')
+# --- CONFIGURAÇÃO DE LOGIN (AUTH) ---
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login_page'
+
+class User(UserMixin):
+    def __init__(self, id, name, email):
+        self.id = id
+        self.name = name
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    if not conn: return None
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name, email FROM clients WHERE id = %s", (user_id,))
+        user_data = cur.fetchone()
+        if user_data:
+            return User(id=user_data['id'], name=user_data['name'], email=user_data['email'])
+        return None
+    except Exception as e:
+        print(f"Erro Auth: {e}")
+        return None
+    finally:
+        conn.close()
 
 # --- FUNÇÕES AUXILIARES ---
 def get_db_connection():
@@ -39,199 +64,212 @@ def get_db_connection():
         print(f"❌ Erro DB: {e}")
         return None
 
-def get_embedding(text):
-    """Gera o vetor numérico do texto usando Gemini"""
-    if not GEMINI_KEY: return None
-    try:
-        result = genai.embed_content(
-            model="models/embedding-001",
-            content=text,
-            task_type="retrieval_document",
-            title="Q&A"
-        )
-        return result['embedding']
-    except Exception as e:
-        print(f"❌ Erro Embedding: {e}")
-        return None
-
 # --- ROTAS DE PÁGINAS (FRONTEND) ---
 
 @app.route('/')
 def home():
-    # A vitrine principal
     return render_template('index.html')
 
 @app.route('/login')
 def login_page():
-    # Tela de acesso do cliente
+    if current_user.is_authenticated:
+        return redirect(url_for('admin_page'))
     return render_template('login.html')
 
 @app.route('/admin')
+@login_required
 def admin_page():
-    # O antigo 'dashboard' agora é Admin
-    # Futuramente: Adicionar verificação de login aqui
-    return render_template('admin.html')
+    # Passa o usuário logado para o HTML
+    return render_template('admin.html', user=current_user)
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('home'))
 
 # --- ROTAS DE API (BACKEND) ---
 
-# 1. CAPTURA DE LEADS (Salva quem tentou comprar)
-@app.route('/api/leads', methods=['POST'])
-def save_lead():
+# 1. LOGIN
+@app.route('/api/login', methods=['POST'])
+def api_login():
     data = request.json
-    name = data.get('name')
-    whatsapp = data.get('whatsapp')
-    interest = data.get('interest') # Qual produto ele estava vendo
+    email = data.get('email')
+    password = data.get('password')
 
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro DB"}), 500
+    if not conn: return jsonify({"error": "Erro de conexão"}), 500
 
     try:
-        cur = conn.cursor()
-        # Salva o lead na tabela clients
-        cur.execute("""
-            INSERT INTO clients (name, whatsapp, status, company_name) 
-            VALUES (%s, %s, 'lead', %s)
-            RETURNING id
-        """, (name, whatsapp, interest))
-        conn.commit()
-        return jsonify({"message": "Lead salvo com sucesso!"}), 201
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Busca usuário pelo email
+        cur.execute("SELECT id, name, email, password_hash FROM clients WHERE email = %s", (email,))
+        user_data = cur.fetchone()
+
+        if user_data and user_data['password_hash']:
+            # Verifica a senha hashada
+            if check_password_hash(user_data['password_hash'], password):
+                user_obj = User(id=user_data['id'], name=user_data['name'], email=user_data['email'])
+                login_user(user_obj)
+                return jsonify({"message": "Login realizado!", "redirect": "/admin"})
+            else:
+                return jsonify({"error": "Senha incorreta"}), 401
+        else:
+            return jsonify({"error": "Usuário não encontrado"}), 404
     except Exception as e:
-        print(f"Erro ao salvar lead: {e}")
-        return jsonify({"error": "Erro ao salvar lead"}), 500
+        print(e)
+        return jsonify({"error": "Erro no servidor"}), 500
     finally:
         conn.close()
 
-# 2. CHECKOUT (Gera Link do Mercado Pago)
-@app.route('/api/checkout/create', methods=['POST'])
-def create_checkout():
-    if not mp_sdk:
-        return jsonify({"error": "Mercado Pago não configurado"}), 500
-
-    data = request.json
-    product_title = data.get('product_title', 'Projeto Leanttro')
-    total_setup = float(data.get('total_setup', 0))
-    
-    # Cria a preferência de pagamento
-    preference_data = {
-        "items": [
-            {
-                "title": f"SETUP: {product_title}",
-                "quantity": 1,
-                "unit_price": total_setup
-            }
-        ],
-        "back_urls": {
-            "success": "https://leanttro.com/admin", # Redireciona para o painel após pagar
-            "failure": "https://leanttro.com/",
-            "pending": "https://leanttro.com/"
-        },
-        "auto_return": "approved",
-        "statement_descriptor": "LEANTTRO TECH"
-    }
-
-    try:
-        preference_response = mp_sdk.preference().create(preference_data)
-        payment_url = preference_response["response"]["init_point"]
-        
-        return jsonify({
-            "checkout_url": payment_url, 
-            "message": "Checkout criado"
-        })
-    except Exception as e:
-        print(f"Erro MP: {e}")
-        return jsonify({"error": str(e)}), 500
-
-# 3. WEBHOOK EVOLUTION (Cérebro da IA no WhatsApp)
-@app.route('/webhooks/evolution', methods=['POST'])
-def evolution_webhook():
-    data = request.json
-    print("📩 Webhook Recebido:", data)
-
-    # Lógica de RAG (Busca Vetorial + Gemini)
-    # Ative esta parte quando configurar a Evolution API
-    """
-    try:
-        msg_text = data['data']['message']['conversation']
-        remote_jid = data['data']['key']['remoteJid']
-        
-        # 1. Gera Embedding da pergunta
-        vector = get_embedding(msg_text)
-        
-        # 2. Busca no Banco Vetorial
-        conn = get_db_connection()
-        cur = conn.cursor()
-        # Busca os 2 trechos mais parecidos
-        cur.execute("SELECT content FROM leanttro_rag_knowledge ORDER BY embedding <=> %s::vector LIMIT 2", (vector,))
-        rows = cur.fetchall()
-        contexto = " ".join([r[0] for r in rows]) if rows else "Sem contexto específico."
-        
-        # 3. Gera Resposta com Gemini usando o contexto
-        model = genai.GenerativeModel('gemini-pro')
-        prompt = f"Você é o assistente da Leanttro. Use este contexto: {contexto}. Responda à pergunta: {msg_text}"
-        response = model.generate_content(prompt)
-        resposta_final = response.text
-        
-        # 4. Envia de volta para o WhatsApp
-        if EVOLUTION_URL and EVOLUTION_KEY:
-            requests.post(f"{EVOLUTION_URL}/message/sendText/{EVOLUTION_KEY}", json={
-                "number": remote_jid,
-                "text": resposta_final
-            })
-        
-    except Exception as e:
-        print(f"Erro no fluxo IA: {e}")
-    """
-
-    return jsonify({"status": "received"}), 200
-
-# 4. LISTAR PRODUTOS (Para o Painel Admin futuramente)
-@app.route('/api/products', methods=['GET'])
-def list_products():
+# 2. CATÁLOGO DINÂMICO (Para popular o index.html)
+@app.route('/api/products/catalog', methods=['GET'])
+def get_catalog():
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Erro DB"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT id, name, price_setup, price_monthly FROM products WHERE is_active = TRUE")
-        return jsonify(cur.fetchall())
+        
+        # Busca produtos ativos
+        cur.execute("""
+            SELECT id, name, slug, description, price_setup, price_monthly 
+            FROM products WHERE is_active = TRUE
+        """)
+        products = cur.fetchall()
+        
+        catalog = {}
+        for p in products:
+            # Busca addons para este produto
+            cur.execute("""
+                SELECT id, name, price_setup, price_monthly, description 
+                FROM addons WHERE product_id = %s
+            """, (p['id'],))
+            addons = cur.fetchall()
+            
+            # Monta estrutura JSON compatível com o frontend
+            catalog[p['slug']] = {
+                "id": p['id'], # Importante para o pedido
+                "title": p['name'],
+                "desc": p['description'],
+                "baseSetup": float(p['price_setup']),
+                "baseMonthly": float(p['price_monthly']),
+                "upsells": [
+                    {
+                        "id": a['id'],
+                        "label": a['name'],
+                        "priceSetup": float(a['price_setup']),
+                        "priceMonthly": float(a['price_monthly']),
+                        "details": a['description']
+                    } for a in addons
+                ]
+            }
+            
+        return jsonify(catalog)
+    except Exception as e:
+        print(f"Erro Catalogo: {e}")
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-if __name__ == '__main__':
-    # Roda na porta 5000 (Padrão Flask/Dokploy)
-    app.run(host='0.0.0.0', port=5000)
+# 3. CHECKOUT SEGURO (Cria Order + Link MP)
+@app.route('/api/checkout/create', methods=['POST'])
+def create_checkout():
+    if not mp_sdk: return jsonify({"error": "Mercado Pago offline"}), 500
 
-# --- ROTA: CHATBOT DO SITE (Widget) ---
-@app.route('/api/chat/message', methods=['POST'])
-def chat_message():
     data = request.json
-    user_message = data.get('message')
-    
-    # 1. Recupera Contexto (RAG Simplificado)
-    contexto_vendas = """
-    Você é o Assistente Virtual da Leanttro.
-    Sua missão é vender sites e softwares. Seja curto, persuasivo e use emojis.
-    
-    Nossos Produtos:
-    1. Site Institucional (R$ 499): Para advogados, clínicas. Passa autoridade.
-    2. Loja Virtual (R$ 999): Sem taxas, com painel admin e integração Mercado Livre.
-    3. Site de Casamento (R$ 399): Lista de presentes em dinheiro (PIX).
-    4. Projetos Corp (A partir de R$ 1.500): Automação, Dashboards e IA.
-    
-    Se o cliente perguntar preço, fale o valor e convide para fechar contrato.
-    Se o cliente tiver dúvida técnica, explique de forma simples.
-    Sempre termine a resposta incentivando a clicar em "Solicitar Contrato" ou chamando para o WhatsApp.
-    """
+    # Dados do formulário do modal
+    client_info = data.get('client')  # { name, email, whatsapp }
+    cart = data.get('cart')           # { product_id, addon_ids: [] }
 
+    conn = get_db_connection()
     try:
-        # 2. Consulta o Gemini
-        model = genai.GenerativeModel('gemini-pro')
-        prompt = f"Contexto: {contexto_vendas}\nCliente: {user_message}\nMaia:"
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        response = model.generate_content(prompt)
-        bot_reply = response.text
+        # A. IDENTIFICAR OU CRIAR CLIENTE
+        cur.execute("SELECT id FROM clients WHERE email = %s", (client_info['email'],))
+        existing_client = cur.fetchone()
         
-        return jsonify({"reply": bot_reply})
+        if existing_client:
+            client_id = existing_client['id']
+        else:
+            # Cria lead se não existe (Senha será definida depois ou enviada por email)
+            # Dica: Você pode gerar uma senha temp aqui se quiser
+            cur.execute("""
+                INSERT INTO clients (name, email, whatsapp, status, created_at)
+                VALUES (%s, %s, %s, 'lead', NOW())
+                RETURNING id
+            """, (client_info['name'], client_info['email'], client_info['whatsapp']))
+            client_id = cur.fetchone()['id']
+            conn.commit()
+
+        # B. CALCULAR PREÇO NO SERVER (Segurança)
+        # 1. Preço Produto Base
+        cur.execute("SELECT price_setup, name FROM products WHERE id = %s", (cart['product_id'],))
+        product_row = cur.fetchone()
+        if not product_row: return jsonify({"error": "Produto inválido"}), 400
+        
+        total_setup = float(product_row['price_setup'])
+        product_title = product_row['name']
+        
+        # 2. Preço Addons
+        selected_addons_ids = cart.get('addon_ids', [])
+        if selected_addons_ids:
+            # Formata query segura para lista de IDs
+            query_addons = "SELECT price_setup FROM addons WHERE id = ANY(%s)"
+            cur.execute(query_addons, (selected_addons_ids,))
+            addons_rows = cur.fetchall()
+            for addon in addons_rows:
+                total_setup += float(addon['price_setup'])
+
+        # C. CRIAR PEDIDO (ORDER)
+        cur.execute("""
+            INSERT INTO orders (client_id, product_id, selected_addons, total_setup, payment_status, created_at)
+            VALUES (%s, %s, %s, %s, 'pending', NOW())
+            RETURNING id
+        """, (client_id, cart['product_id'], selected_addons_ids, total_setup))
+        order_id = cur.fetchone()['id']
+        conn.commit()
+
+        # D. GERAR LINK MERCADO PAGO
+        preference_data = {
+            "items": [
+                {
+                    "id": str(cart['product_id']),
+                    "title": f"PROJETO: {product_title}",
+                    "quantity": 1,
+                    "unit_price": total_setup
+                }
+            ],
+            "payer": {
+                "name": client_info['name'],
+                "email": client_info['email']
+            },
+            "external_reference": str(order_id), # VINCULA O PAGAMENTO AO PEDIDO
+            "back_urls": {
+                "success": "https://leanttro.com/admin", 
+                "failure": "https://leanttro.com/",
+                "pending": "https://leanttro.com/"
+            },
+            "auto_return": "approved"
+        }
+        
+        pref_response = mp_sdk.preference().create(preference_data)
+        payment_url = pref_response["response"]["init_point"]
+        
+        return jsonify({"checkout_url": payment_url})
 
     except Exception as e:
-        print(f"Erro Gemini: {e}")
-        return jsonify({"reply": "Ops! Tive um pico de energia aqui. ⚡ Pode me chamar no WhatsApp?"})
+        conn.rollback()
+        print(f"Erro Checkout: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# 4. CHATBOT (RAG)
+@app.route('/api/chat/message', methods=['POST'])
+def chat_message():
+    # ... (Mantenha seu código de chat aqui, pode usar o RAG na tabela 'leanttro_rag_knowledge' depois)
+    return jsonify({"reply": "Estou em manutenção para upgrade de segurança. Volto logo!"})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
