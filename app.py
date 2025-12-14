@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
+import traceback
 
 # Importações para PDF
 from reportlab.lib.pagesizes import letter
@@ -33,11 +34,79 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # --- CONFIGURAÇÕES ---
 DB_URL = os.getenv('DATABASE_URL')
-GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 
+# --- CONFIGURAÇÃO GEMINI (AUTO-DETECT) ---
+GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+chat_model = None
+SELECTED_MODEL_NAME = "gemini-pro" # Fallback padrão
+
 if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
+    try:
+        genai.configure(api_key=GEMINI_KEY)
+        
+        print("\n========== [DIAGNÓSTICO DE MODELOS] ==========")
+        print(f"Chave usada (início): {GEMINI_KEY[:5]}...")
+        
+        found_model = None
+        try:
+            # Tenta listar todos os modelos disponíveis para essa chave
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    # Remove o prefixo 'models/' se vier junto, para garantir compatibilidade
+                    clean_name = m.name.replace('models/', '')
+                    print(f"✅ MODELO DISPONÍVEL: {m.name} (Limpo: {clean_name})")
+                    
+                    # Pega o primeiro que aparecer (geralmente é o melhor compatível)
+                    if not found_model:
+                        found_model = clean_name
+        except Exception as e_list:
+            print(f"❌ ERRO AO LISTAR MODELOS: {e_list}")
+            print("Tentando forçar uso do 'gemini-pro'...")
+
+        if found_model:
+            SELECTED_MODEL_NAME = found_model
+            print(f"🎯 MODELO SELECIONADO AUTOMATICAMENTE: {SELECTED_MODEL_NAME}")
+        else:
+            print(f"⚠️ Nenhum modelo listado. Usando fallback: {SELECTED_MODEL_NAME}")
+
+        print("==============================================\n")
+
+        # PERSONA LELIS (VENDEDOR)
+        SYSTEM_PROMPT_LELIS = """
+        VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
+        SUA MISSÃO: Fechar vendas. Você não é suporte, é VENDEDOR.
+        TOM: Agressivo, direto, confiante ("Lobo de Wall Street"), mas educado.
+        
+        TABELA DE PREÇOS (OFERTA RELÂMPAGO):
+        1. Site Institucional: De R$ 1.200 por R$ 499 (Promoção).
+        2. Loja Virtual: R$ 999.
+        3. Sistemas Custom: A partir de R$ 1.500.
+
+        REGRAS:
+        1. Respostas curtas (máximo 2 frases).
+        2. GATILHO: Sempre diga que a agenda está fechando ou restam poucas vagas.
+        3. Se perguntar preço, fale o valor e termine com: "Bora fechar agora?"
+        4. Se pedir contato humano, mande clicar no botão do WhatsApp.
+        """
+        
+        try:
+            chat_model = genai.GenerativeModel(
+                SELECTED_MODEL_NAME,
+                system_instruction=SYSTEM_PROMPT_LELIS
+            )
+            print(f"🚀 Gemini INICIALIZADO com sucesso usando: {SELECTED_MODEL_NAME}")
+        except Exception as e_init:
+            # Se falhar com system_instruction, tenta sem (biblioteca antiga)
+            print(f"⚠️ Falha com system prompt ({e_init}). Tentando inicialização simples...")
+            chat_model = genai.GenerativeModel(SELECTED_MODEL_NAME)
+            
+    except Exception as e:
+        print(f"❌ Erro CRÍTICO ao configurar Gemini: {e}")
+        traceback.print_exc()
+else:
+    print("❌ Nenhuma API Key do Google encontrada.")
+
 
 mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
 
@@ -373,7 +442,8 @@ def save_briefing():
         """
         
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # Usa o mesmo modelo detectado no início
+            model = genai.GenerativeModel(SELECTED_MODEL_NAME)
             response = model.generate_content(tech_prompt_input)
             tech_prompt = response.text
         except:
@@ -392,51 +462,48 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT "LELIS" (CORRIGIDO E OTIMIZADO) ---
-@app.route('/api/chat/message', methods=['POST'])
-def chat_message():
-    data = request.json
-    msg = data.get('message', '')
+# --- CHATBOT LELIS ---
+@app.route('/api/chat', methods=['POST'])
+def handle_chat():
+    print(f"\n--- [LELIS] Chat trigger (Modelo ativo: {SELECTED_MODEL_NAME}) ---")
     
-    # Lógica de horário nativa (sem bibliotecas extras que quebram o app)
-    hora_atual = datetime.now().hour
-    saudacao = "Bom dia"
-    if 12 <= hora_atual < 18:
-        saudacao = "Boa tarde"
-    elif hora_atual >= 18:
-        saudacao = "Boa noite"
+    if not chat_model:
+        print("❌ ERRO: Chat Model não inicializado.")
+        return jsonify({'error': 'Serviço de IA Offline.'}), 503
 
     try:
-        # Tenta usar o modelo Flash (mais rápido e estável), se não, vai pro Pro
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-        except:
-            model = genai.GenerativeModel('gemini-pro')
+        data = request.json
+        history = data.get('conversationHistory', [])
         
-        # PROMPT LELIS: Vendedor Humano
-        prompt = f"""
-        Aja como Lelis, um consultor de vendas Sênior da agência Leanttro. 
-        NÃO aja como uma IA. Aja como um humano falando no WhatsApp.
+        gemini_history = []
+        for message in history:
+            role = 'user' if message['role'] == 'user' else 'model'
+            gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
+            
+        chat_session = chat_model.start_chat(history=gemini_history)
         
-        CONTEXTO:
-        - Hora atual: {saudacao} (use isso se for a primeira mensagem).
-        - O cliente disse: "{msg}"
-        - Serviços: Site Institucional (R$499 - Promoção), Loja Virtual (R$999), Sistemas.
+        user_message = data.get('message', '') 
+        if history and history[-1]['role'] == 'user':
+            user_message = history[-1]['text']
+        if not user_message: user_message = "Olá"
+
+        print(f"ℹ️  [Lelis] Msg: '{user_message}'")
         
-        DIRETRIZES:
-        1. Seja curto e direto (máximo 2 frases).
-        2. Se o cliente apenas disser "oi", "olá" ou similar, responda: "{saudacao}! Tudo bem por aí? Como posso ajudar sua empresa hoje?"
-        3. Se perguntar preço, fale o valor e já pergunte: "Esse valor cabe no seu orçamento atual?"
-        4. Use 1 emoji no máximo.
-        5. Seu objetivo é fazer ele clicar nos planos ou tirar dúvida rápida.
-        """
-        
-        response = model.generate_content(prompt)
-        return jsonify({"reply": response.text})
+        response = chat_session.send_message(
+            user_message,
+            generation_config=genai.types.GenerationConfig(temperature=0.7),
+            safety_settings={
+                 'HATE': 'BLOCK_NONE', 'HARASSMENT': 'BLOCK_NONE',
+                 'SEXUAL' : 'BLOCK_NONE', 'DANGEROUS' : 'BLOCK_NONE'
+            }
+        )
+        print(f"✅  [Lelis] Resposta OK")
+        return jsonify({'reply': response.text})
+
     except Exception as e:
-        print(f"Erro Gemini: {e}")
-        # Mensagem de erro também na persona do Lelis, pra não quebrar a imersão
-        return jsonify({"reply": f"{saudacao}! A demanda tá gigante aqui agora. Clica no botão do WhatsApp ali em cima que eu te atendo rapidinho por lá? 🚀"})
+        print(f"❌ ERRO CHAT: {e}")
+        traceback.print_exc()
+        return jsonify({'reply': "Minha conexão caiu... 🔌 Chama no WhatsApp?"}), 200
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
@@ -444,7 +511,7 @@ def briefing_chat():
     data = request.json
     last_msg = data.get('message')
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(SELECTED_MODEL_NAME)
         response = model.generate_content(f"Você é LIA, especialista em Briefing. Ajude o cliente a definir o site. Cliente: {last_msg}")
         return jsonify({"reply": response.text})
     except:
