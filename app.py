@@ -435,7 +435,7 @@ def signup_checkout():
         conn.commit()
         
         preference_data = {
-            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": 1.00}],
+            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": 10.00}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
