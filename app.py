@@ -5,7 +5,7 @@ import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 # Importações para PDF
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 
 load_dotenv()
 
@@ -25,13 +24,13 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev')
 CORS(app)
 
-# --- CONFIG UPLOAD DE ARQUIVOS ---
+# CONFIGURAÇÃO DE UPLOAD
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf', 'doc', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES DE AMBIENTE ---
 DB_URL = os.getenv('DATABASE_URL')
 GEMINI_KEY = os.getenv('GOOGLE_API_KEY')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
@@ -80,7 +79,6 @@ def load_user(user_id):
 
 # --- HELPER FUNCTIONS ---
 def extract_days(value):
-    """Extrai número de dias de strings ou retorna padrão"""
     if not value: return 0
     if isinstance(value, int): return value
     nums = re.findall(r'\d+', str(value))
@@ -102,7 +100,7 @@ def cadastro_page():
 @app.route('/login')
 def login_page():
     if current_user.is_authenticated:
-        # Lógica inteligente: Se já tem briefing, vai pro admin. Se não, vai pro briefing.
+        # LÓGICA DE REDIRECIONAMENTO INTELIGENTE
         conn = get_db_connection()
         try:
             cur = conn.cursor()
@@ -118,7 +116,7 @@ def login_page():
 @app.route('/briefing')
 @login_required
 def briefing_page():
-    # Segurança: Evita que acessem o briefing se já foi enviado
+    # Segurança: Se já tem briefing, não deixa acessar essa página de novo
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -133,23 +131,20 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
-    # Dados padrão
-    stats = {"users": 0, "orders": 0, "revenue": 0.0, "status_projeto": "AGUARDANDO", "revisoes": 2}
+    stats = {"users": 0, "orders": 0, "revenue": 0.0, "revisoes": 2, "status_projeto": "AGUARDANDO BRIEFING"}
     
     try:
         if conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
-            # Se for ADMIN do sistema
+            # Dados Gerais (Admin View)
             if current_user.role == 'admin':
                 cur.execute("SELECT COUNT(*) as c FROM clients")
                 stats["users"] = cur.fetchone()['c']
                 cur.execute("SELECT COUNT(*) as c FROM orders")
                 stats["orders"] = cur.fetchone()['c']
-                cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
-                stats["revenue"] = float(cur.fetchone()[0])
             
-            # Se for CLIENTE (Busca status do briefing)
+            # Dados do Cliente Logado (User View)
             cur.execute("SELECT status, revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
             briefing = cur.fetchone()
             if briefing:
@@ -157,8 +152,8 @@ def admin_page():
                 stats["revisoes"] = briefing['revisoes_restantes']
             
             conn.close()
-    except:
-        pass
+    except Exception as e:
+        print(f"Erro Admin Stats: {e}")
         
     return render_template('admin.html', user=current_user, stats=stats)
 
@@ -190,7 +185,7 @@ def api_login():
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # Verifica se tem briefing para decidir o redirect
+                # Verifica briefing para redirecionar corretamente
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 redirect_url = "/admin" if has_briefing else "/briefing"
@@ -216,15 +211,13 @@ def get_catalog():
             cur.execute("SELECT id, name, price_setup, price_monthly, description, prazo_addons FROM addons WHERE product_id = %s", (p['id'],))
             addons = cur.fetchall()
             
-            prazo_prod = extract_days(p.get('prazo_products')) or 10
-            
             catalog[p['slug']] = {
                 "id": p['id'],
                 "title": p['name'],
                 "desc": p['description'],
                 "baseSetup": float(p['price_setup']),
                 "baseMonthly": float(p['price_monthly']),
-                "prazoBase": prazo_prod,
+                "prazoBase": extract_days(p.get('prazo_products')) or 10,
                 "upsells": [
                     {
                         "id": a['id'],
@@ -237,13 +230,10 @@ def get_catalog():
                 ]
             }
         return jsonify(catalog)
-    except Exception as e:
-        print(f"Erro Catalog: {e}")
-        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# 3. GERAÇÃO DE CONTRATO (Com Revisões)
+# 3. GERAÇÃO DE CONTRATO (ATUALIZADO COM REVISÕES)
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -252,56 +242,52 @@ def generate_contract():
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
         
-        # Cabeçalho Neon
+        # Header Neon Style
         p.setFillColorRGB(0.05, 0.05, 0.05)
         p.rect(0, height - 100, width, 100, fill=1)
         p.setFillColorRGB(0.82, 1, 0)
         p.setFont("Helvetica-BoldOblique", 24)
         p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
         
-        # Título
+        # Corpo
         p.setFillColorRGB(0, 0, 0)
         p.setFont("Helvetica-Bold", 18)
         p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
         
-        # Dados
         p.setFont("Helvetica", 12)
         y = height - 200
         p.drawString(50, y, f"CONTRATANTE: {data.get('name', 'N/A').upper()}")
         p.drawString(50, y-20, f"DOCUMENTO: {data.get('document', 'N/A')}")
         p.drawString(50, y-40, f"DATA: {datetime.now().strftime('%d/%m/%Y')}")
         
-        # Escopo
         y -= 80
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "ESCOPO E PRAZOS")
+        p.drawString(50, y, "ESCOPO DO PROJETO")
         p.setFont("Helvetica", 12)
         y -= 25
-        p.drawString(50, y, f"Projeto: {data.get('product_name')}")
+        p.drawString(50, y, f"Serviço: {data.get('product_name')}")
         p.drawString(50, y-20, f"Entrega Estimada: {data.get('deadline')} dias úteis")
-        p.drawString(50, y-40, f"Setup: {data.get('total_setup')}")
-        p.drawString(50, y-60, f"Mensal: {data.get('total_monthly')}")
-        
-        # CLAUSULA DE REVISÕES (NOVO)
+        p.drawString(50, y-40, f"Valor Setup: {data.get('total_setup')}")
+        p.drawString(50, y-60, f"Valor Mensal: {data.get('total_monthly')}")
+
+        # CLÁUSULA DE REVISÕES (NOVO)
         y -= 100
         p.setFont("Helvetica-Bold", 12)
         p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES:")
         p.setFont("Helvetica", 10)
         y -= 20
-        p.drawString(50, y, "1. O projeto contempla 02 (duas) rodadas de revisão após a primeira entrega.")
+        p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão após a entrega da V1.")
         y -= 15
-        p.drawString(50, y, "2. Alterações extras serão cobradas a R$ 150,00/hora técnica.")
+        p.drawString(50, y, "2. Alterações adicionais ou mudanças de escopo serão cobradas a R$ 150,00/hora técnica.")
         
         p.showPage()
         p.save()
         buffer.seek(0)
-        
-        return send_file(buffer, as_attachment=True, download_name=f"Contrato_{data.get('document')}.pdf", mimetype='application/pdf')
+        return send_file(buffer, as_attachment=True, download_name="Contrato_Leanttro.pdf", mimetype='application/pdf')
     except Exception as e:
-        print(f"Erro PDF: {e}")
-        return jsonify({"error": "Falha ao gerar contrato"}), 500
+        return jsonify({"error": "Erro ao gerar PDF"}), 500
 
-# 4. CHECKOUT (CORRIGIDO ERRO NULL)
+# 4. SIGNUP + CHECKOUT
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
     if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
@@ -310,9 +296,6 @@ def signup_checkout():
     client = data.get('client')
     cart = data.get('cart')
     
-    if not client or not cart:
-        return jsonify({"error": "Dados incompletos"}), 400
-
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -331,10 +314,10 @@ def signup_checkout():
             """, (client['name'], client['email'], client['whatsapp'], hashed))
             client_id = cur.fetchone()['id']
         
-        # PREVENÇÃO DE ERRO NULL: Usa "or 0" para garantir que não vá None
-        total_setup = float(cart.get('total_setup') or 0)
-        total_monthly = float(cart.get('total_monthly') or 0) 
+        # Salva valores
         addons_ids = cart.get('addon_ids', [])
+        total_setup = float(cart.get('total_setup', 0))
+        total_monthly = float(cart.get('total_monthly', 0))
         
         cur.execute("""
             INSERT INTO orders (client_id, product_id, selected_addons, total_setup, total_monthly, payment_status, created_at)
@@ -345,13 +328,12 @@ def signup_checkout():
         
         conn.commit()
         
-        # Checkout MP
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": total_setup}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
-                "success": "https://leanttro.com/login", # Manda logar pra cair no briefing
+                "success": "https://leanttro.com/login", # Manda pro login para cair no briefing
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
@@ -360,18 +342,14 @@ def signup_checkout():
         
         pref = mp_sdk.preference().create(preference_data)
         
+        # Loga usuário
         login_user(User(client_id, client['name'], client['email']))
         
         return jsonify({"checkout_url": pref["response"]["init_point"]})
-
-    except Exception as e:
-        conn.rollback()
-        print(f"Erro Signup Checkout: {e}")
-        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
-# 5. SALVAR BRIEFING + GERAR PROMPT (NOVA ROTA)
+# 5. SALVAR BRIEFING + GERAR PROMPT TÉCNICO (NOVO)
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
 def save_briefing():
@@ -389,16 +367,16 @@ def save_briefing():
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     file_names.append(filename)
 
-        # GERAÇÃO DO PROMPT TÉCNICO
+        # Prompt para a IA agir como Senior Developer e criar a spec técnica
         tech_prompt_input = f"""
-        ATUE COMO ARQUITETO DE SOFTWARE SÊNIOR.
-        Crie um prompt técnico detalhado para um desenvolvedor criar um site com base nisto:
-        - CLIENTE: {current_user.name}
-        - CORES: {colors}
-        - ESTILO: {style}
-        - SEÇÕES: {sections}
-        - STACK: HTML, TailwindCSS, JS.
-        - SAÍDA: Apenas o prompt técnico em inglês ou português.
+        ACT AS A SENIOR FRONTEND ARCHITECT.
+        CREATE A DETAILED TECHNICAL PROMPT FOR A DEVELOPER TO BUILD A WEBSITE WITH THESE SPECS:
+        - CLIENT: {current_user.name}
+        - PREFERRED COLORS: {colors}
+        - STYLE: {style}
+        - SECTIONS: {sections}
+        - STACK: HTML5, TAILWINDCSS, JS (NO FRAMEWORKS LIKE REACT).
+        - OUTPUT: JUST THE TECHNICAL PROMPT.
         """
         
         model = genai.GenerativeModel('gemini-pro')
@@ -419,15 +397,23 @@ def save_briefing():
         print(e)
         return jsonify({"error": str(e)}), 500
 
-# 6. CHATBOT RAG E BRIEFING
-@app.route('/api/chat/message', methods=['POST'])
+# 6. CHATBOT RAG / BRIEFING (Restaurado e Expandido)
+@app.route('/api/chat/message', methods=['POST']) # Rota genérica do site
 def chat_message():
+    # Aqui você pode colar sua lógica de RAG antiga se tiver backup, 
+    # ou usar esta versão simplificada com Gemini que responde dúvidas comerciais
     data = request.json
-    msg = data.get('message', '')
-    # Mantive sua rota simples, pode reintegrar o RAG complexo aqui se tiver o código
-    return jsonify({"reply": "Estou processando seu pedido de desenvolvimento."})
+    msg = data.get('message')
+    
+    try:
+        model = genai.GenerativeModel('gemini-pro')
+        chat = model.start_chat(history=[])
+        response = chat.send_message(f"Você é um assistente comercial da Leanttro. Responda curto e vendedor: {msg}")
+        return jsonify({"reply": response.text})
+    except:
+        return jsonify({"reply": "Estou em manutenção, fale no WhatsApp!"})
 
-@app.route('/api/briefing/chat', methods=['POST'])
+@app.route('/api/briefing/chat', methods=['POST']) # Rota nova do Briefing
 @login_required
 def briefing_chat():
     data = request.json
@@ -438,6 +424,7 @@ def briefing_chat():
     
     try:
         model = genai.GenerativeModel('gemini-pro')
+        # Converte histórico simples para formato do Gemini se necessário, ou manda tudo no prompt
         full_prompt = f"{system}\nHistórico: {history}\nCliente: {last_msg}"
         response = model.generate_content(full_prompt)
         return jsonify({"reply": response.text})
@@ -445,4 +432,4 @@ def briefing_chat():
         return jsonify({"reply": "Erro de conexão com a IA."})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    app.run(host='0.0.0.0', port=5000)
