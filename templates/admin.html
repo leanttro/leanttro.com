@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEANTTRO | DASHBOARD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;700&family=Kanit:ital,wght@0,300;0,600;1,800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { ln: { neon: '#D2FF00', black: '#050505', carbon: '#111111' } },
+                    fontFamily: { sans: ['Kanit'], mono: ['Chakra Petch'] }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-ln-black text-white min-h-screen font-sans selection:bg-ln-neon selection:text-black">
+
+    <div class="fixed top-0 w-full h-16 bg-ln-black border-b border-white/10 z-50 flex items-center justify-between px-6">
+        <div class="text-xl font-black italic tracking-tighter">LEAN<span class="text-ln-neon">TTRO</span>.</div>
+        <div class="flex items-center gap-4">
+            <span class="hidden md:block font-mono text-xs text-gray-400">OLÁ, CLIENTE</span>
+            <div class="w-8 h-8 bg-ln-neon rounded-full flex items-center justify-center text-black font-bold text-xs">CL</div>
+        </div>
+    </div>
+
+    <div class="pt-24 pb-12 px-6 max-w-6xl mx-auto">
+        
+        <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
+            <div>
+                <div class="font-mono text-xs text-ln-neon mb-2">// STATUS DO PROJETO</div>
+                <h1 class="text-4xl md:text-6xl font-black italic uppercase leading-none">LOJA VIRTUAL <br> <span class="text-gray-600">PREMIUM</span></h1>
+            </div>
+            <div class="bg-ln-carbon border border-ln-neon/30 px-6 py-3 rounded flex items-center gap-3">
+                <span class="w-2 h-2 bg-ln-neon rounded-full animate-pulse"></span>
+                <span class="font-mono text-sm font-bold text-white">EM DESENVOLVIMENTO</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
+                <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-code-commit"></i></div>
+                <div class="font-mono text-xs text-gray-500 mb-1">FASE ATUAL</div>
+                <div class="text-xl font-bold uppercase">FRONTEND</div>
+                <div class="w-full bg-gray-800 h-1 mt-4">
+                    <div class="bg-ln-neon h-1 w-[70%]"></div>
+                </div>
+            </div>
+
+            <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
+                <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-calendar-days"></i></div>
+                <div class="font-mono text-xs text-gray-500 mb-1">PREVISÃO DE ENTREGA</div>
+                <div class="text-xl font-bold uppercase">20 DEZ 2025</div>
+            </div>
+
+            <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
+                <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                <div class="font-mono text-xs text-gray-500 mb-1">FINANCEIRO</div>
+                <div class="text-xl font-bold uppercase text-green-500">EM DIA</div>
+            </div>
+        </div>
+
+        <h2 class="font-mono text-sm text-gray-500 mb-6 uppercase border-b border-white/10 pb-2">AÇÕES RÁPIDAS</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <a href="https://wa.me/" class="flex items-center justify-between p-6 bg-ln-carbon border border-white/5 hover:bg-white hover:text-black transition-all group cursor-pointer">
+                <span class="font-bold italic text-lg">FALAR COM SUPORTE</span>
+                <i class="fa-solid fa-arrow-right -rotate-45 group-hover:rotate-0 transition-transform"></i>
+            </a>
+            <button class="flex items-center justify-between p-6 bg-ln-carbon border border-white/5 hover:bg-white hover:text-black transition-all group cursor-pointer">
+                <span class="font-bold italic text-lg">VER CONTRATO</span>
+                <i class="fa-solid fa-file-pdf group-hover:scale-110 transition-transform"></i>
+            </button>
+        </div>
+
+    </div>
+
+</body>
+</html>
