@@ -199,3 +199,39 @@ def list_products():
 if __name__ == '__main__':
     # Roda na porta 5000 (Padrão Flask/Dokploy)
     app.run(host='0.0.0.0', port=5000)
+
+# --- ROTA: CHATBOT DO SITE (Widget) ---
+@app.route('/api/chat/message', methods=['POST'])
+def chat_message():
+    data = request.json
+    user_message = data.get('message')
+    
+    # 1. Recupera Contexto (RAG Simplificado)
+    contexto_vendas = """
+    Você é o Assistente Virtual da Leanttro.
+    Sua missão é vender sites e softwares. Seja curto, persuasivo e use emojis.
+    
+    Nossos Produtos:
+    1. Site Institucional (R$ 499): Para advogados, clínicas. Passa autoridade.
+    2. Loja Virtual (R$ 999): Sem taxas, com painel admin e integração Mercado Livre.
+    3. Site de Casamento (R$ 399): Lista de presentes em dinheiro (PIX).
+    4. Projetos Corp (A partir de R$ 1.500): Automação, Dashboards e IA.
+    
+    Se o cliente perguntar preço, fale o valor e convide para fechar contrato.
+    Se o cliente tiver dúvida técnica, explique de forma simples.
+    Sempre termine a resposta incentivando a clicar em "Solicitar Contrato" ou chamando para o WhatsApp.
+    """
+
+    try:
+        # 2. Consulta o Gemini
+        model = genai.GenerativeModel('gemini-pro')
+        prompt = f"Contexto: {contexto_vendas}\nCliente: {user_message}\nMaia:"
+        
+        response = model.generate_content(prompt)
+        bot_reply = response.text
+        
+        return jsonify({"reply": bot_reply})
+
+    except Exception as e:
+        print(f"Erro Gemini: {e}")
+        return jsonify({"reply": "Ops! Tive um pico de energia aqui. ⚡ Pode me chamar no WhatsApp?"})

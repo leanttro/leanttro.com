@@ -14,6 +14,7 @@
             theme: {
                 extend: {
                     fontFamily: {
+                        // As famílias de fontes usadas no CSS
                         sans: ['Kanit', 'sans-serif'],
                         mono: ['Chakra Petch', 'monospace'],
                     },
@@ -32,6 +33,7 @@
                     animation: {
                         'marquee': 'marquee 25s linear infinite',
                         'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'pulse-neon': 'pulseNeon 2s infinite',
                     },
                     keyframes: {
                         marquee: {
@@ -41,6 +43,10 @@
                         fadeIn: {
                             '0%': { opacity: '0', transform: 'scale(0.95)' },
                             '100%': { opacity: '1', transform: 'scale(1)' },
+                        },
+                        pulseNeon: {
+                            '0%, 100%': { boxShadow: '0 0 10px #D2FF00' },
+                            '50%': { boxShadow: '0 0 20px #D2FF00' },
                         }
                     }
                 }
@@ -108,6 +114,28 @@
             padding-top: 10px;
             border-top: 1px solid rgba(255,255,255,0.1);
         }
+
+        /* Chatbot Styles */
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #333; }
+        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        /* Classes para transição suave dos estados do chat */
+        .chat-hidden-bottom {
+            transform: translateY(20px);
+            opacity: 0;
+            pointer-events: none;
+        }
+        .chat-visible {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-ln-neon selection:text-black">
@@ -130,7 +158,7 @@
                 <a href="#tech" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ POR QUE TER UM SITE? ]</a>
             </nav>
 
-            <a href="#products" class="hidden md:block bg-white text-black hover:bg-ln-neon px-6 py-2 font-bold uppercase text-sm italic transform skew-x-[-10deg] transition-all">
+            <a href="/login" class="hidden md:block bg-white text-black hover:bg-ln-neon px-6 py-2 font-bold uppercase text-sm italic transform skew-x-[-10deg] transition-all">
                 <span class="transform skew-x-[10deg] inline-block">ÁREA DO CLIENTE</span>
             </a>
             
@@ -279,6 +307,74 @@
         </div>
     </footer>
 
+    <div id="chat-widget-container" class="fixed bottom-6 right-6 z-[999] font-sans flex flex-col items-end">
+        
+        <button onclick="setChatState('peek')" id="chat-trigger" class="flex items-center gap-3 bg-ln-neon text-black px-4 py-3 rounded-full shadow-[0_0_20px_rgba(210,255,0,0.3)] hover:scale-105 transition-transform animate-pulse-neon group chat-visible transition-all duration-300">
+            <div class="w-10 h-10 rounded-full overflow-hidden border-2 border-black bg-black">
+                <img src="/static/chat.png?v=2" alt="Leanttro AI" class="w-full h-full object-cover">
+            </div>
+            <div class="text-left hidden group-hover:block animate-fade-in mr-2">
+                <p class="text-[10px] font-bold uppercase leading-tight">Dúvidas?</p>
+                <p class="text-sm font-black italic leading-none">FALAR COM IA</p>
+            </div>
+        </button>
+
+        <div id="chat-peek" class="hidden chat-hidden-bottom flex-col w-[300px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl overflow-hidden mt-4 transition-all duration-300 z-50">
+            <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full overflow-hidden border border-ln-neon relative bg-black">
+                    <img src="/static/chat.png?v=2" class="w-full h-full object-cover">
+                    <div class="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border border-black"></div>
+                </div>
+                <div>
+                    <h4 class="text-white font-bold text-sm">Leanttro AI</h4>
+                    <p class="text-[10px] text-ln-neon font-mono">ONLINE AGORA</p>
+                </div>
+            </div>
+            <div class="p-4 bg-[#050505]">
+                <div class="bg-ln-carbon border border-white/10 text-gray-300 p-3 rounded-xl text-sm leading-relaxed mb-4">
+                    Olá! 👋 Posso te ajudar a escolher o plano ideal para o seu negócio?
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="setChatState('closed')" class="flex-1 bg-transparent border border-white/20 text-gray-400 py-2 rounded-lg text-xs font-bold uppercase hover:bg-white/10 transition-colors">FECHAR</button>
+                    <button onclick="setChatState('full')" class="flex-1 bg-ln-neon text-black py-2 rounded-lg text-xs font-bold uppercase hover:bg-white transition-colors flex items-center justify-center gap-2">ABRIR CONVERSA <i class="fa-solid fa-comment"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="chat-full" class="hidden chat-hidden-bottom flex-col w-[350px] h-[500px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl overflow-hidden mt-4 transition-all duration-300 z-50">
+            <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full overflow-hidden border border-ln-neon relative bg-black">
+                        <img src="/static/chat.png?v=2" alt="Leanttro" class="w-full h-full object-cover">
+                        <div class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-black"></div>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold text-sm">Leanttro AI</h4>
+                        <p class="text-xs text-ln-neon font-mono">ONLINE</p>
+                    </div>
+                </div>
+                <button onclick="setChatState('closed')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div id="chat-messages" class="flex-grow p-4 overflow-y-auto bg-[#050505] space-y-4">
+                </div>
+
+            <div class="p-3 bg-ln-carbon border-t border-white/10">
+                <form onsubmit="sendMessage(event)" class="relative">
+                    <input type="text" id="chat-input" 
+                           class="w-full bg-black border border-white/20 text-white text-sm rounded-full pl-4 pr-12 py-3 focus:outline-none focus:border-ln-neon placeholder-gray-600 font-mono"
+                           placeholder="Digite sua dúvida..." autocomplete="off">
+                    <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-ln-neon text-black rounded-full flex items-center justify-center hover:bg-white transition-colors">
+                        <i class="fa-solid fa-paper-plane text-xs"></i>
+                    </button>
+                </form>
+                <div class="text-center mt-2">
+                    <p class="text-[9px] text-gray-600 font-mono uppercase">Powered by Gemini AI</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="productModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
         <div onclick="closeModal()" class="absolute inset-0 bg-black/90 backdrop-blur-sm"></div>
         
@@ -322,53 +418,156 @@
                         <span id="displayTotalMensal" class="font-mono text-sm font-bold text-ln-neon">R$ 0,00/mês</span>
                     </div>
                     
-                    <button onclick="finalizarPedido()" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-lg hover:bg-white transition-all transform skew-x-[-10deg]">
-                        <span class="transform skew-x-[10deg] inline-block">SOLICITAR CONTRATO</span>
+                    <div class="flex items-center justify-between mb-4 px-1">
+                        <a href="#" class="text-[10px] font-mono text-gray-400 hover:text-ln-neon transition-colors border-b border-gray-600 hover:border-ln-neon">
+                            <i class="fa-solid fa-file-contract mr-1"></i> LER MINUTA DO CONTRATO (PDF)
+                        </a>
+                        <div class="text-[10px] font-mono text-ln-neon animate-pulse">
+                            <i class="fa-solid fa-lock mr-1"></i> AMBIENTE SEGURO
+                        </div>
+                    </div>
+
+                    <button onclick="finalizarPagamentoMP()" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-lg hover:bg-white transition-all transform skew-x-[-10deg] group">
+                        <span class="transform skew-x-[10deg] inline-block flex items-center justify-center gap-2">
+                            PAGAR E GERAR CONTRATO <i class="fa-solid fa-arrow-right -rotate-45 group-hover:rotate-0 transition-transform"></i>
+                        </span>
                     </button>
-                    <p class="text-center text-[10px] font-mono text-gray-600 mt-2">PAGAMENTO SEGURO & GARANTIA DE ENTREGA</p>
+                    <p class="text-center text-[10px] font-mono text-gray-600 mt-2">PROCESSADO VIA MERCADO PAGO</p>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // === BASE DE DADOS ESTRATÉGICA ===
+        // === SCRIPT DO CHATBOT (COM 3 ESTADOS) ===
+        const chatTrigger = document.getElementById('chat-trigger');
+        const chatPeek = document.getElementById('chat-peek');
+        const chatFull = document.getElementById('chat-full');
+        const messagesContainer = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        let chatState = 'closed'; // closed, peek, full
+        let welcomeMessageAdded = false;
+
+        function setChatState(newState) {
+            chatState = newState;
+
+            chatTrigger.classList.remove('chat-visible'); 
+            chatTrigger.classList.add('chat-hidden-bottom');
+            
+            chatPeek.classList.remove('chat-visible');
+            chatPeek.classList.add('chat-hidden-bottom');
+            
+            chatFull.classList.remove('chat-visible');
+            chatFull.classList.add('chat-hidden-bottom');
+
+            setTimeout(() => {
+                chatTrigger.classList.add('hidden');
+                chatPeek.classList.add('hidden');
+                chatFull.classList.add('hidden');
+
+                if (newState === 'closed') {
+                    chatTrigger.classList.remove('hidden');
+                    setTimeout(() => {
+                        chatTrigger.classList.remove('chat-hidden-bottom');
+                        chatTrigger.classList.add('chat-visible');
+                    }, 50);
+                } 
+                else if (newState === 'peek') {
+                    chatPeek.classList.remove('hidden');
+                    setTimeout(() => {
+                        chatPeek.classList.remove('chat-hidden-bottom');
+                        chatPeek.classList.add('chat-visible');
+                    }, 50);
+                } 
+                else if (newState === 'full') {
+                    chatFull.classList.remove('hidden');
+                    setTimeout(() => {
+                        chatFull.classList.remove('chat-hidden-bottom');
+                        chatFull.classList.add('chat-visible');
+                    }, 50);
+                    if (!welcomeMessageAdded) {
+                        appendMessage('bot', "Olá! Sou o assistente da Leanttro. 🤖<br>Posso te ajudar a escolher o site ideal ou tirar dúvidas sobre preços. O que você procura hoje?");
+                        welcomeMessageAdded = true;
+                    }
+                }
+            }, 300);
+        }
+
+
+        function appendMessage(sender, text) {
+            const isUser = sender === 'user';
+            const html = `
+                <div class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''}">
+                    ${!isUser ? `<div class="w-8 h-8 rounded-full overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10"><img src="/static/chat.png?v=2" class="w-full h-full object-cover"></div>` : ''}
+                    <div class="${isUser ? 'bg-ln-neon text-black' : 'bg-ln-carbon border border-white/10 text-gray-300'} p-3 rounded-xl text-sm leading-relaxed max-w-[80%]">
+                        ${text}
+                    </div>
+                </div>
+            `;
+            messagesContainer.insertAdjacentHTML('beforeend', html);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function showTyping() {
+            const html = `
+                <div id="typing-indicator" class="flex gap-3">
+                    <div class="w-8 h-8 rounded-full overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10"><img src="/static/chat.png?v=2" class="w-full h-full object-cover"></div>
+                    <div class="bg-ln-carbon border border-white/10 p-4 rounded-r-xl rounded-bl-xl flex items-center gap-1 h-10">
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full typing-dot"></div>
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full typing-dot"></div>
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full typing-dot"></div>
+                    </div>
+                </div>
+            `;
+            messagesContainer.insertAdjacentHTML('beforeend', html);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function removeTyping() {
+            const el = document.getElementById('typing-indicator');
+            if(el) el.remove();
+        }
+
+        async function sendMessage(e) {
+            e.preventDefault();
+            const text = chatInput.value.trim();
+            if(!text) return;
+
+            appendMessage('user', text);
+            chatInput.value = '';
+            showTyping();
+
+            try {
+                const response = await fetch('/api/chat/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await response.json();
+                removeTyping();
+                appendMessage('bot', data.reply);
+            } catch (error) {
+                removeTyping();
+                appendMessage('bot', "Minha conexão caiu... 🔌 Pode me chamar no WhatsApp?");
+            }
+        }
+
+        setChatState('closed');
+
+
+        // === SCRIPT DOS PRODUTOS ===
         const catalog = {
             'presenca': {
                 title: "Site Institucional", 
                 icon: '<i class="fa-solid fa-user-tie"></i>', 
                 desc: "Sua vitrine profissional. Um site One-Page moderno, rápido e focado em passar autoridade. O cartão de visitas do futuro para Advogados, Médicos e Consultores.",
-                baseSetup: 499, // Preço agressivo
+                baseSetup: 499,
                 baseMonthly: 49,
                 upsells: [
-                    { 
-                        id: 'chat_ia', 
-                        label: 'Secretária Virtual (IA)', 
-                        priceSetup: 150, 
-                        priceMonthly: 50,
-                        details: "Nunca mais perca um cliente. Nossa IA atende no site 24h, tira dúvidas e encaminha o cliente pronto para fechar no seu WhatsApp."
-                    },
-                    { 
-                        id: 'google_maps', 
-                        label: 'Ficha Google Maps', 
-                        priceSetup: 200, 
-                        priceMonthly: 0,
-                        details: "Seja o primeiro a aparecer quando procurarem seu serviço no bairro. Configuramos seu Google Meu Negócio para atrair clientes locais."
-                    },
-                    { 
-                        id: 'copywriting', 
-                        label: 'Escrita de Textos (Copy)', 
-                        priceSetup: 250, 
-                        priceMonthly: 0,
-                        details: "Não sabe o que escrever? Criamos textos persuasivos e profissionais para o seu site, focados em convencer o visitante a contratar você."
-                    },
-                    { 
-                        id: 'link_bio', 
-                        label: 'Página de Links (Insta)', 
-                        priceSetup: 100, 
-                        priceMonthly: 0,
-                        details: "Substitua o Linktree por uma página profissional com sua marca, reunindo seu WhatsApp, Localização e Site em um só lugar."
-                    }
+                    { id: 'chat_ia', label: 'Secretária Virtual (IA)', priceSetup: 150, priceMonthly: 50, details: "Nunca mais perca um cliente. Nossa IA atende no site 24h, tira dúvidas e encaminha o cliente pronto para fechar no seu WhatsApp." },
+                    { id: 'google_maps', label: 'Ficha Google Maps', priceSetup: 200, priceMonthly: 0, details: "Seja o primeiro a aparecer quando procurarem seu serviço no bairro. Configuramos seu Google Meu Negócio para atrair clientes locais." },
+                    { id: 'copywriting', label: 'Escrita de Textos (Copy)', priceSetup: 250, priceMonthly: 0, details: "Não sabe o que escrever? Criamos textos persuasivos e profissionais para o seu site, focados em convencer o visitante a contratar você." },
+                    { id: 'link_bio', label: 'Página de Links (Insta)', priceSetup: 100, priceMonthly: 0, details: "Substitua o Linktree por uma página profissional com sua marca, reunindo seu WhatsApp, Localização e Site em um só lugar." }
                 ]
             },
             'ecommerce': {
@@ -378,27 +577,9 @@
                 baseSetup: 999,
                 baseMonthly: 99,
                 upsells: [
-                    { 
-                        id: 'bot_vendas', 
-                        label: 'Vendedor IA (Chat)', 
-                        priceSetup: 500, 
-                        priceMonthly: 100,
-                        details: "Um vendedor que conhece todo o seu estoque. Ele sugere produtos, tira dúvidas e ajuda o cliente a finalizar a compra."
-                    },
-                    { 
-                        id: 'ml_integ', 
-                        label: 'Integração Mercado Livre', 
-                        priceSetup: 300, 
-                        priceMonthly: 0,
-                        details: "Gestão unificada. O que vende no site dá baixa no Mercado Livre e vice-versa. Evite furos de estoque."
-                    },
-                    { 
-                        id: 'pixel_setup', 
-                        label: 'Configuração de Pixel', 
-                        priceSetup: 150, 
-                        priceMonthly: 0,
-                        details: "Prepare sua loja para anúncios. Instalamos o Pixel do Facebook e Google para você rastrear quem visita e compra."
-                    }
+                    { id: 'bot_vendas', label: 'Vendedor IA (Chat)', priceSetup: 500, priceMonthly: 100, details: "Um vendedor que conhece todo o seu estoque. Ele sugere produtos, tira dúvidas e ajuda o cliente a finalizar a compra." },
+                    { id: 'ml_integ', label: 'Integração Mercado Livre', priceSetup: 300, priceMonthly: 0, details: "Gestão unificada. O que vende no site dá baixa no Mercado Livre e vice-versa. Evite furos de estoque." },
+                    { id: 'pixel_setup', label: 'Configuração de Pixel', priceSetup: 150, priceMonthly: 0, details: "Prepare sua loja para anúncios. Instalamos o Pixel do Facebook e Google para você rastrear quem visita e compra." }
                 ]
             },
             'eventos': {
@@ -408,20 +589,8 @@
                 baseSetup: 399,
                 baseMonthly: 29,
                 upsells: [
-                    { 
-                        id: 'concierge', 
-                        label: 'Concierge WhatsApp', 
-                        priceSetup: 200, 
-                        priceMonthly: 30,
-                        details: "IA que responde os convidados sobre horário, local e trajes no WhatsApp, para que os noivos não sejam incomodados."
-                    },
-                    { 
-                        id: 'artes_mesa', 
-                        label: 'QR Code de Mesa', 
-                        priceSetup: 100, 
-                        priceMonthly: 0,
-                        details: "Arquivo digital de placas de mesa com QR Code para os convidados acessarem o site ou a lista de presentes na festa."
-                    }
+                    { id: 'concierge', label: 'Concierge WhatsApp', priceSetup: 200, priceMonthly: 30, details: "IA que responde os convidados sobre horário, local e trajes no WhatsApp, para que os noivos não sejam incomodados." },
+                    { id: 'artes_mesa', label: 'QR Code de Mesa', priceSetup: 100, priceMonthly: 0, details: "Arquivo digital de placas de mesa com QR Code para os convidados acessarem o site ou a lista de presentes na festa." }
                 ]
             },
             'corp': {
@@ -431,20 +600,8 @@
                 baseSetup: 1500,
                 baseMonthly: 299,
                 upsells: [
-                    { 
-                        id: 'ia_custom', 
-                        label: 'IA Treinada (RAG)', 
-                        priceSetup: 1000, 
-                        priceMonthly: 200,
-                        details: "Inteligência Artificial alimentada com os manuais e dados da sua empresa para uso interno ou atendimento ao cliente."
-                    },
-                    { 
-                        id: 'automacao', 
-                        label: 'Automação de Processos', 
-                        priceSetup: 800, 
-                        priceMonthly: 100,
-                        details: "Elimine trabalho manual. Conectamos seu site ao seu CRM, planilhas ou Slack para automatizar fluxos de trabalho."
-                    }
+                    { id: 'ia_custom', label: 'IA Treinada (RAG)', priceSetup: 1000, priceMonthly: 200, details: "Inteligência Artificial alimentada com os manuais e dados da sua empresa para uso interno ou atendimento ao cliente." },
+                    { id: 'automacao', label: 'Automação de Processos', priceSetup: 800, priceMonthly: 100, details: "Elimine trabalho manual. Conectamos seu site ao seu CRM, planilhas ou Slack para automatizar fluxos de trabalho." }
                 ]
             }
         };
@@ -461,7 +618,6 @@
             return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         }
 
-        // Função para abrir/fechar detalhes (Accordion)
         function toggleDetail(event, id) {
             event.preventDefault(); 
             event.stopPropagation(); 
@@ -469,7 +625,6 @@
             const content = document.getElementById(`detail-${id}`);
             const arrow = document.getElementById(`arrow-${id}`);
             
-            // Fecha outros para manter a UI limpa
             document.querySelectorAll('.details-content').forEach(el => {
                 if(el !== content) el.classList.remove('open');
             });
@@ -490,7 +645,6 @@
             currentProduct = catalog[productId];
             if (!currentProduct) return;
 
-            // Popula dados básicos
             document.getElementById('modalTitle').innerText = currentProduct.title;
             document.getElementById('modalIconContainer').innerHTML = currentProduct.icon;
             document.getElementById('modalDesc').innerText = currentProduct.desc;
@@ -499,7 +653,6 @@
             const optionsContainer = document.getElementById('modalOptions');
             optionsContainer.innerHTML = '';
 
-            // Renderiza Upsells
             currentProduct.upsells.forEach(opt => {
                 const uniqueId = opt.id; 
                 
@@ -536,7 +689,7 @@
             calculateTotal();
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            document.body.style.overflow = 'hidden'; // Trava scroll da página
+            document.body.style.overflow = 'hidden'; 
         }
 
         function closeModal() {
@@ -563,29 +716,50 @@
             displayMonthly.innerText = formatBRL(totalMonthly) + '/mês';
         }
 
-        async function finalizarPedido() {
-            const btn = document.querySelector('button[onclick="finalizarPedido()"]');
-            const originalText = btn.innerHTML;
-            
-            // Texto de loading
-            btn.innerHTML = `<span class="inline-block animate-pulse">GERANDO CONTRATO...</span>`;
+        // === NOVA FUNÇÃO: PAGAMENTO VIA MERCADO PAGO ===
+        async function finalizarPagamentoMP() {
+            const btn = document.querySelector('button[onclick="finalizarPagamentoMP()"]');
+            const originalContent = btn.innerHTML;
+
+            btn.innerHTML = `<span class="transform skew-x-[10deg] inline-block animate-pulse">CONECTANDO MERCADO PAGO...</span>`;
             btn.classList.add('opacity-75', 'cursor-not-allowed');
-            
-            // Simulação (Aqui você integraria com WhatsApp ou Gateway de Pagamento)
-            await new Promise(r => setTimeout(r, 1500));
-            
-            // Mensagem para WhatsApp
-            const msg = `Olá! Gostaria de contratar o *${currentProduct.title}*.\nInvestimento Setup: ${formatBRL(currentSetup)}\nMensalidade: ${formatBRL(currentMonthly)}`;
-            const waLink = `https://wa.me/5511999999999?text=${encodeURIComponent(msg)}`; // ALTERAR SEU NUMERO AQUI
-            
-            window.location.href = waLink;
-            
-            btn.innerHTML = originalText;
-            btn.classList.remove('opacity-75', 'cursor-not-allowed');
-            closeModal();
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/checkout/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        product_title: currentProduct.title,
+                        total_setup: currentSetup
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.checkout_url) {
+                    // O backend devolveu o link do MP, redireciona o cliente
+                    window.location.href = data.checkout_url;
+                } else {
+                    alert('Erro ao gerar checkout: ' + (data.error || 'Tente novamente.'));
+                    restaurarBotao();
+                }
+
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro de conexão. Verifique sua internet.');
+                restaurarBotao();
+            }
+
+            function restaurarBotao() {
+                btn.innerHTML = originalContent;
+                btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                btn.disabled = false;
+            }
         }
 
-        // Fechar com ESC
         document.addEventListener('keydown', (e) => { if(e.key === "Escape") closeModal(); });
     </script>
 </body>
