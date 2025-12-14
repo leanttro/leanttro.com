@@ -448,7 +448,7 @@ def signup_checkout():
         
         preference_data = {
             # Restaurei o preço REAL aqui para seu cupom funcionar
-            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price":10.00}],
+            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": total_setup}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
