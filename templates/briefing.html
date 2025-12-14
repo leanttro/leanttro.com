@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Briefing do Projeto | Leanttro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&family=Kanit:ital,wght@0,400;0,800;1,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { ln: { neon: '#D2FF00', black: '#050505', carbon: '#111111' } },
+                    fontFamily: { sans: ['Kanit'], mono: ['Chakra Petch'] }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-ln-black text-white h-screen flex flex-col md:flex-row overflow-hidden selection:bg-ln-neon selection:text-black">
+
+    <div class="w-full md:w-1/3 bg-ln-carbon border-r border-white/10 flex flex-col relative z-20">
+        <div class="p-6 border-b border-white/10 bg-black/50">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full border border-ln-neon bg-black p-1">
+                    <img src="/static/chat.png" class="w-full h-full object-cover rounded-full">
+                </div>
+                <div>
+                    <h2 class="font-bold italic text-white">LIA <span class="text-ln-neon text-xs font-mono ml-2">BRIEFING AI</span></h2>
+                    <p class="text-xs text-gray-500 font-mono">ESTOU AQUI PARA TE AJUDAR</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="chat-history" class="flex-grow p-6 overflow-y-auto space-y-4 custom-scrollbar">
+            <div class="flex gap-3">
+                <div class="bg-ln-black border border-white/10 p-3 rounded-xl text-sm text-gray-300 max-w-[90%]">
+                    Olá! Parabéns pelo novo projeto. 🚀 <br>
+                    Para começarmos, me conte um pouco sobre o estilo que você imagina para o site? (Ex: Minimalista, Escuro, Colorido, Corporativo...)
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-white/10 bg-black">
+            <form onsubmit="sendMessage(event)" class="relative">
+                <input type="text" id="chat-input" class="w-full bg-ln-carbon border border-white/20 rounded-full py-3 pl-4 pr-12 text-sm text-white focus:border-ln-neon outline-none" placeholder="Digite aqui...">
+                <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-ln-neon text-black rounded-full flex items-center justify-center hover:bg-white transition-all">
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="w-full md:w-2/3 flex flex-col h-full overflow-y-auto bg-ln-black p-8 md:p-12">
+        <div class="max-w-3xl mx-auto w-full">
+            <h1 class="text-4xl font-black italic uppercase mb-2">BRIEFING <span class="text-ln-neon">TÉCNICO</span></h1>
+            <p class="font-mono text-gray-500 text-sm mb-10 border-l-2 border-ln-neon pl-4">
+                Preencha os dados finais aqui para oficializar o projeto.
+            </p>
+
+            <form id="briefingForm" class="space-y-8">
+                
+                <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
+                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">1. Paleta de Cores</label>
+                    <textarea name="colors" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-24 rounded" placeholder="Ex: Preto e Dourado..."></textarea>
+                </div>
+
+                <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
+                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">2. Estilo Visual & Vibe</label>
+                    <textarea name="style" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-24 rounded" placeholder="Ex: Moderno, Clean..."></textarea>
+                </div>
+
+                <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
+                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">3. Seções Necessárias</label>
+                    <textarea name="sections" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-24 rounded" placeholder="Ex: Home, Sobre, Serviços, Contato..."></textarea>
+                </div>
+
+                <div class="bg-ln-carbon border border-dashed border-ln-neon/50 p-8 rounded-lg text-center relative group hover:bg-ln-neon/5 transition-all">
+                    <input type="file" name="files" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-500 mb-4 group-hover:text-ln-neon transition-colors"></i>
+                    <h3 class="font-bold text-white uppercase">Arraste seu Logo e Fotos aqui</h3>
+                    <p class="text-xs text-gray-500 font-mono mt-2">Formatos: JPG, PNG, PDF</p>
+                    <div id="fileList" class="mt-4 text-xs text-ln-neon font-mono"></div>
+                </div>
+
+                <div class="pt-6">
+                    <button type="button" onclick="submitBriefing()" id="btnSave" class="w-full bg-ln-neon text-black py-4 font-black uppercase italic text-xl hover:bg-white transition-all transform hover:-translate-y-1 shadow-[0_0_20px_rgba(210,255,0,0.3)]">
+                        ENVIAR BRIEFING FINAL
+                    </button>
+                    <p class="text-center text-xs text-gray-600 mt-4 font-mono">AO ENVIAR, NOSSO TIME TÉCNICO INICIARÁ O DESENVOLVIMENTO.</p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const chatHistory = [];
+        const chatContainer = document.getElementById('chat-history');
+
+        async function sendMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if(!text) return;
+
+            appendMessage('user', text);
+            input.value = '';
+            chatHistory.push({role: 'user', content: text});
+
+            const loadingId = appendMessage('bot', 'Digitando...', true);
+
+            try {
+                const res = await fetch('/api/briefing/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: text, history: chatHistory })
+                });
+                const data = await res.json();
+                
+                removeMessage(loadingId);
+                appendMessage('bot', data.reply);
+                chatHistory.push({role: 'model', content: data.reply});
+            } catch(err) {
+                removeMessage(loadingId);
+                appendMessage('bot', 'Erro de conexão.');
+            }
+        }
+
+        function appendMessage(sender, text, isLoading=false) {
+            const isUser = sender === 'user';
+            const id = 'msg-' + Date.now();
+            const html = `
+                <div id="${id}" class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in">
+                    <div class="${isUser ? 'bg-ln-neon text-black' : 'bg-ln-black border border-white/10 text-gray-300'} p-3 rounded-xl text-sm max-w-[90%]">
+                        ${text}
+                    </div>
+                </div>`;
+            chatContainer.insertAdjacentHTML('beforeend', html);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return id;
+        }
+
+        function removeMessage(id) {
+            const el = document.getElementById(id);
+            if(el) el.remove();
+        }
+
+        document.querySelector('input[type="file"]').addEventListener('change', function(e) {
+            const list = document.getElementById('fileList');
+            list.innerHTML = Array.from(e.target.files).map(f => `[${f.name}]`).join(' ');
+        });
+
+        async function submitBriefing() {
+            const btn = document.getElementById('btnSave');
+            btn.innerText = "GERANDO PROMPT TÉCNICO...";
+            btn.disabled = true;
+
+            const form = document.getElementById('briefingForm');
+            const formData = new FormData(form);
+
+            try {
+                const res = await fetch('/api/briefing/save', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if(data.success) {
+                    window.location.href = data.redirect;
+                } else {
+                    alert("Erro: " + data.error);
+                    btn.innerText = "TENTAR NOVAMENTE";
+                    btn.disabled = false;
+                }
+            } catch(err) {
+                console.error(err);
+                alert("Erro ao enviar.");
+            }
+        }
+    </script>
+</body>
+</html>
