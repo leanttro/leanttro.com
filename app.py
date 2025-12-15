@@ -352,6 +352,24 @@ def get_catalog():
     finally:
         conn.close()
 
+# --- ROTA API CASES (NOVA) ---
+@app.route('/api/cases', methods=['GET'])
+def get_cases():
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "Erro de Conexão"}), 500
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Assuming the table is named 'case' (lowercase is standard in postgres unless quoted)
+        # Using quotes to handle 'case' being a reserved keyword just in case.
+        cur.execute("SELECT id, url, foto_site FROM \"case\" ORDER BY id DESC")
+        cases = cur.fetchall()
+        return jsonify(cases)
+    except Exception as e:
+        print(f"Erro ao buscar cases: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:

@@ -66,7 +66,7 @@
         }
         
         /* CORREÇÃO FINAL: SCROLL ANCHOR (90px para dar espaço ao cabeçalho fixo) */
-        #products, #why-site {
+        #products, #why-site, #cases {
             scroll-margin-top: 90px;
         }
         /* FIM DA CORREÇÃO DE SCROLL */
@@ -150,6 +150,17 @@
             display: inline-block;
             animation: marquee-ln 20s linear infinite;
         }
+
+        /* CASES SCROLL ANIMATION (Lando Style) */
+        .case-scroll-item {
+            opacity: 0;
+            transform: translateY(150px) scale(0.9) skewY(3deg);
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); /* Snappy easing */
+        }
+        .case-scroll-item.is-visible {
+            opacity: 1;
+            transform: translateY(0) scale(1) skewY(0);
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-ln-neon selection:text-black">
@@ -169,6 +180,7 @@
             
             <nav class="hidden md:flex space-x-12">
                 <a href="#products" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ SERVIÇOS ]</a>
+                <a href="#cases" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ CASES ]</a>
                 <a href="#why-site" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ POR QUE TER UM SITE? ]</a>
             </nav>
 
@@ -184,6 +196,7 @@
 
     <div id="mobile-menu" class="hidden fixed top-20 left-0 w-full bg-ln-black border-b border-white/10 p-6 z-30 flex flex-col gap-4 shadow-2xl pt-16">
         <a href="#products" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Serviços</a>
+        <a href="#cases" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Cases</a>
         <a href="#why-site" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Por que ter site?</a>
         <a href="/login" class="bg-ln-neon text-black text-center py-3 font-bold uppercase italic rounded-sm">Área do Cliente</a>
     </div>
@@ -382,6 +395,26 @@
             </div>
         </div>
     </section>
+    
+    <section id="cases" class="py-24 bg-ln-black relative overflow-hidden border-t border-white/10">
+         <div class="absolute inset-0 bg-grid-pattern opacity-30 pointer-events-none"></div>
+         <div class="absolute top-0 right-0 w-[300px] h-[300px] bg-ln-neon/10 rounded-full blur-[150px] pointer-events-none"></div>
+         
+         <div class="max-w-[1600px] mx-auto px-6 mb-20 relative z-10 flex flex-col md:flex-row justify-between items-end gap-6">
+             <div>
+                 <h2 class="text-4xl md:text-7xl font-black italic uppercase text-white mb-2 leading-[0.9]">
+                     NOSSOS <span class="text-ln-neon text-neon-glow">CASES</span>
+                 </h2>
+                 <p class="font-mono text-gray-400 text-lg">// PROJETOS QUE DECOLARAM</p>
+             </div>
+             <div class="hidden md:block font-mono text-xs text-right text-gray-500">
+                 /// SCROLL PARA VER MAIS /// <br> MODO: HIGH PERFORMANCE
+             </div>
+         </div>
+
+         <div id="cases-grid" class="max-w-[1600px] mx-auto px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10 pb-20">
+             </div>
+    </section>
 
     <footer class="bg-black border-t border-white/10 py-12">
         <div class="max-w-[1400px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -531,7 +564,7 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ATUALIZADO (LÓGICA CARLOS + RETENÇÃO) ===
+        // === 1. CHATBOT ATUALIZADO (LÓGICA Lelis + RETENÇÃO) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
@@ -598,7 +631,7 @@
             
             // Efeito de "Digitando..."
             const loadingId = 'typing-' + Date.now();
-            const loadingHtml = `<div id="${loadingId}" class="text-xs text-gray-500 font-mono ml-4 mb-2 animate-pulse">Carlos está digitando...</div>`;
+            const loadingHtml = `<div id="${loadingId}" class="text-xs text-gray-500 font-mono ml-4 mb-2 animate-pulse">Lelis está digitando...</div>`;
             messagesContainer.insertAdjacentHTML('beforeend', loadingHtml);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
@@ -618,7 +651,12 @@
             }
         }
         
-        document.addEventListener('DOMContentLoaded', () => setChatState('peek'));
+        document.addEventListener('DOMContentLoaded', () => {
+            setChatState('peek');
+            loadCatalogFromDB();
+            renderSlides();
+            loadCases(); // Carrega os cases dinâmicos
+        });
 
         // === 2. LÓGICA DE PRODUTOS E CHECKOUT ===
         
@@ -661,7 +699,6 @@
                 console.error("Erro ao carregar catálogo", e);
             }
         }
-        document.addEventListener('DOMContentLoaded', loadCatalogFromDB);
 
         function formatBRL(value) {
             return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -807,13 +844,9 @@
 
         // === 3. LÓGICA DO CARROSSEL DE PROJETOS (AJUSTADO) ===
         const carouselData = [
-            // PROJETO 1: Usa proj_institucional.png
             { name: "Site Institucional", file: "/static/proj_institucional.png", link: "#products" }, 
-            // PROJETO 2: Usa proj_ecommerce.png
             { name: "Loja Virtual", file: "/static/proj_ecommerce.png", link: "#products" },
-            // PROJETO 3: Usa proj_casamento.png (Ajustei o nome para Casamento/Festa)
             { name: "Casamento & Festa", file: "/static/proj_casamento.png", link: "#products" },
-            // PROJETO 4: Usa proj_custom.png (Corrigido o texto para CONVITE)
             { name: "Convite Digital Custom", file: "/static/proj_custom.png", link: "#products" } 
         ];
 
@@ -826,7 +859,6 @@
             indicatorsContainer.innerHTML = '';
             
             carouselData.forEach((item, index) => {
-                // Cria o slide (ocupa 100% da largura do flex container)
                 const slideHtml = `
                     <a href="${item.link}" class="w-full flex-shrink-0 relative">
                         <div class="absolute top-0 left-0 p-4 font-mono text-sm text-ln-neon">// ${item.name.toUpperCase()}</div>
@@ -834,7 +866,6 @@
                     </a>`;
                 slidesContainer.insertAdjacentHTML('beforeend', slideHtml);
                 
-                // Cria o indicador
                 const indicatorHtml = `
                     <div id="indicator-${index}" 
                          onclick="goToSlide(${index})"
@@ -845,11 +876,9 @@
         }
 
         function updateCarousel() {
-            // 1. Move o Slide
             const offset = -currentSlide * 100;
             slidesContainer.style.transform = `translateX(${offset}%)`;
 
-            // 2. Atualiza os Indicadores
             document.querySelectorAll('#carousel-indicators div').forEach((indicator, index) => {
                 if (index === currentSlide) {
                     indicator.classList.remove('bg-white/20');
@@ -879,11 +908,63 @@
             updateCarousel();
         }
 
-        // Inicializa o Carrossel na primeira carga da página
-        document.addEventListener('DOMContentLoaded', renderSlides);
-
-        // Adiciona Autoplay (Opcional: 5 segundos)
         setInterval(() => changeSlide(1), 5000);
+
+        // === 4. LÓGICA DA NOVA SEÇÃO CASES (LANDO STYLE) ===
+        async function loadCases() {
+            try {
+                const response = await fetch('/api/cases');
+                const cases = await response.json();
+                const grid = document.getElementById('cases-grid');
+
+                if (!cases || cases.length === 0) {
+                     grid.innerHTML = '<p class="text-gray-500 font-mono col-span-full text-center">Nenhum case cadastrado ainda.</p>';
+                     return;
+                }
+
+                grid.innerHTML = cases.map((item, index) => `
+                    <a href="${item.url}" target="_blank" class="case-scroll-item block group relative overflow-hidden rounded-lg border border-white/10 bg-ln-carbon/50 backdrop-blur-sm transition-all hover:border-ln-neon/50" style="transition-delay: ${index * 100}ms">
+                        <div class="aspect-[3/2] overflow-hidden relative">
+                             <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors z-10"></div>
+                             <div class="absolute inset-0 opacity-0 group-hover:opacity-30 bg-ln-neon mix-blend-overlay transition-opacity z-20 duration-500"></div>
+
+                            <img src="${item.foto_site}" alt="Case Image" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700 ease-in-out">
+
+                            <div class="absolute bottom-4 right-4 z-30 h-12 w-12 bg-ln-neon text-black flex items-center justify-center text-2xl skew-x-[-10deg] opacity-0 group-hover:opacity-100 transform translate-y-8 group-hover:translate-y-0 transition-all duration-500 shadow-[0_0_15px_#D2FF00]">
+                                <i class="fa-solid fa-arrow-up-right-from-square transform skew-x-[10deg]"></i>
+                            </div>
+                        </div>
+                    </a>
+                `).join('');
+
+                // Inicia a animação de scroll
+                initScrollAnimations();
+
+            } catch (error) {
+                console.error("Erro ao carregar cases:", error);
+                 document.getElementById('cases-grid').innerHTML = '<p class="text-red-500 font-mono col-span-full text-center">Erro ao carregar cases.</p>';
+            }
+        }
+
+        function initScrollAnimations() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        // Adiciona a classe que dispara a animação CSS
+                        entry.target.classList.add('is-visible');
+                        // Para de observar o elemento após ele aparecer
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, {
+                threshold: 0.15, // Dispara quando 15% do elemento estiver visível
+                rootMargin: "0px 0px -100px 0px" // Ajuste fino para disparar um pouco antes
+            });
+
+            document.querySelectorAll('.case-scroll-item').forEach(item => {
+                observer.observe(item);
+            });
+        }
     </script>
 </body>
 </html>
