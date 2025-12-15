@@ -38,6 +38,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # --- CONFIGURAÇÕES ---
 DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
+# URL base do Directus para montar as imagens (ADICIONADO PARA CORRIGIR AS FOTOS)
+DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
 
 # --- CONFIGURAÇÃO GEMINI (AUTO-DETECT) ---
 GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
@@ -352,17 +354,27 @@ def get_catalog():
     finally:
         conn.close()
 
-# --- ROTA API CASES (NOVA) ---
+# --- ROTA API CASES (ATUALIZADA PARA CORRIGIR AS FOTOS) ---
 @app.route('/api/cases', methods=['GET'])
 def get_cases():
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Assuming the table is named 'case' (lowercase is standard in postgres unless quoted)
         # Using quotes to handle 'case' being a reserved keyword just in case.
         cur.execute("SELECT id, url, foto_site FROM \"case\" ORDER BY id DESC")
-        cases = cur.fetchall()
+        raw_cases = cur.fetchall()
+        
+        # --- CORREÇÃO DE URL (DIRECTUS) ---
+        cases = []
+        for c in raw_cases:
+            case_dict = dict(c)
+            # Se vier só o ID (ex: "e4f5..."), montamos a URL completa.
+            if case_dict['foto_site'] and not case_dict['foto_site'].startswith('http'):
+                case_dict['foto_site'] = f"{DIRECTUS_ASSETS_URL}{case_dict['foto_site']}"
+            cases.append(case_dict)
+        # ----------------------------------
+        
         return jsonify(cases)
     except Exception as e:
         print(f"Erro ao buscar cases: {e}")
