@@ -5,7 +5,7 @@ import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory # Adicionado abort e send_from_directory
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -22,7 +22,10 @@ from reportlab.lib.utils import ImageReader
 
 load_dotenv()
 
-app = Flask(__name__)
+# --- ALTERAÇÃO: Configuração explícita da pasta static ---
+app = Flask(__name__, static_folder='static', static_url_path='/static') 
+# ---------------------------------------------------------
+
 app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev')
 CORS(app)
 
