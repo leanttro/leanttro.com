@@ -176,7 +176,7 @@
         </div>
     </header>
 
-    <div id="mobile-menu" class="hidden fixed top-20 left-0 w-full bg-ln-black border-b border-white/10 p-6 z-30 flex flex-col gap-4 shadow-2xl">
+    <div id="mobile-menu" class="hidden fixed top-20 left-0 w-full bg-ln-black border-b border-white/10 p-6 z-30 flex flex-col gap-4 shadow-2xl pt-6">
         <a href="#products" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Serviços</a>
         <a href="#why-site" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Por que ter site?</a>
         <a href="/login" class="bg-ln-neon text-black text-center py-3 font-bold uppercase italic rounded-sm">Área do Cliente</a>
@@ -464,7 +464,7 @@
     <div id="productModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
         <div onclick="closeModal()" class="absolute inset-0 bg-black/90 backdrop-blur-sm"></div>
         
-        <div class="relative bg-ln-black border border-white/20 w-full max-w-5xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col md:flex-row overflow-hidden animate-fade-in max-h-[90vh] md:max-h-auto">
+        <div class="relative bg-ln-black border border-white/20 w-full max-w-5xl shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col md:flex-row overflow-hidden animate-fade-in max-h-full md:max-h-[90vh] overflow-y-auto">
             
             <button onclick="closeModal()" class="absolute top-4 right-4 text-white hover:text-ln-neon z-20 font-mono text-sm bg-black px-2 border border-white/20">
                 [X] FECHAR
