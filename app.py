@@ -4,6 +4,7 @@ import io
 import json
 import psycopg2
 import psycopg2.extras
+from psycopg2 import pool # ADICIONADO: Importação do Pool
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory
 from flask_cors import CORS
@@ -38,6 +39,17 @@ DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
 
+# --- CONFIGURAÇÃO DB POOL (ADICIONADO) ---
+db_pool = None
+try:
+    if DB_URL:
+        db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DB_URL)
+        print("✅ Pool de Conexões criado com sucesso")
+    else:
+        print("❌ DATABASE_URL não encontrada.")
+except Exception as e:
+    print(f"❌ Erro ao criar Pool: {e}")
+
 # --- CONFIGURAÇÃO GEMINI (AUTO-DETECT) ---
 GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 chat_model = None
@@ -61,21 +73,21 @@ if GEMINI_KEY:
             SELECTED_MODEL_NAME = found_model
             print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
 
+        # --- ALTERAÇÃO: PERSONA LELIS CONSULTOR ---
         SYSTEM_PROMPT_LELIS = """
-        VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
-        SUA MISSÃO: Fechar vendas. Você não é suporte, é VENDEDOR.
-        TOM: Agressivo, direto, confiante ("Lobo de Wall Street"), mas educado.
-        
-        TABELA DE PREÇOS (OFERTA RELÂMPAGO):
+        VOCÊ É: Lelis, Consultor Executivo da Leanttro Digital.
+        SUA MISSÃO: Fechar contratos de alto valor passando autoridade e segurança técnica.
+        TOM: Profissional, Seguro, Educado e Direto. Não use gírias.
+
+        TABELA DE PREÇOS:
         1. Site Institucional: De R$ 1.200 por R$ 499 (Promoção).
         2. Loja Virtual: R$ 999.
         3. Sistemas Custom: A partir de R$ 1.500.
 
         REGRAS:
-        1. Respostas curtas (máximo 2 frases).
-        2. GATILHO: Sempre diga que a agenda está fechando ou restam poucas vagas.
-        3. Se perguntar preço, fale o valor e termine com: "Bora fechar agora?"
-        4. Se pedir contato humano, mande clicar no botão do WhatsApp.
+        1. Respostas curtas e objetivas.
+        2. Se perguntarem preço, apresente o valor e pergunte: "Posso verificar a disponibilidade da nossa equipe técnica para iniciar ainda esta semana?"
+        3. Se o cliente tiver dúvidas técnicas, simplifique a explicação focando no benefício (ex: "Isso garante que seu site não saia do ar").
         """
         
         try:
@@ -107,9 +119,13 @@ class User(UserMixin):
         self.email = email
         self.role = role
 
+# --- ALTERAÇÃO: GET DB CONNECTION COM POOL ---
 def get_db_connection():
     try:
-        return psycopg2.connect(DB_URL)
+        if db_pool:
+            return db_pool.getconn()
+        else:
+            return psycopg2.connect(DB_URL) # Fallback se o pool falhar
     except Exception as e:
         print(f"❌ Erro de Conexão DB: {e}")
         return None
@@ -130,7 +146,8 @@ def load_user(user_id):
         print(f"Erro Auth Loader: {e}")
         return None
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn) # Devolve pro pool
+        elif conn: conn.close()
 
 # --- HELPER FUNCTIONS ---
 def extract_days(value):
@@ -164,7 +181,8 @@ def login_page():
             else:
                 return redirect(url_for('briefing_page'))
         finally:
-            conn.close()
+            if db_pool and conn: db_pool.putconn(conn)
+            elif conn: conn.close()
     return render_template('login.html')
 
 @app.route('/briefing')
@@ -177,7 +195,8 @@ def briefing_page():
         if cur.fetchone():
             return redirect(url_for('admin_page'))
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
     return render_template('briefing.html', user=current_user)
 
 @app.route('/admin')
@@ -216,9 +235,12 @@ def admin_page():
                     "sections": briefing['site_sections']
                 }
             
-            conn.close()
+            if db_pool: db_pool.putconn(conn)
+            elif conn: conn.close()
+            
     except Exception as e:
         print(f"Erro Admin: {e}")
+        if db_pool and conn: db_pool.putconn(conn) # Garantia extra
         pass
     return render_template('admin.html', user=current_user, stats=stats)
 
@@ -262,7 +284,8 @@ def api_login():
         
         return jsonify({"error": "Credenciais inválidas"}), 401
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 @app.route('/api/briefing/update', methods=['POST'])
 @login_required
@@ -298,7 +321,8 @@ def update_briefing():
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 
 @app.route('/api/catalog', methods=['GET'])
@@ -337,7 +361,8 @@ def get_catalog():
             }
         return jsonify(catalog)
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 @app.route('/api/cases', methods=['GET'])
 def get_cases():
@@ -360,9 +385,10 @@ def get_cases():
         print(f"Erro ao buscar cases: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
-# --- ROTA DE DOWNLOAD DO CONTRATO (DADOS REAIS) ---
+# --- ROTA DE DOWNLOAD DO CONTRATO (ATUALIZADA) ---
 @app.route('/api/contract/download', methods=['GET'])
 @login_required
 def download_contract_real():
@@ -372,7 +398,6 @@ def download_contract_real():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Busca dados do cliente e do pedido mais recente
         cur.execute("""
             SELECT c.name, c.document, p.name as product_name, p.prazo_products,
                    o.total_setup, o.total_monthly
@@ -388,12 +413,10 @@ def download_contract_real():
         if not data:
             return jsonify({"error": "Nenhum contrato ativo encontrado."}), 404
 
-        # GERAÇÃO DO PDF
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
         
-        # Design (Mesmo layout do gerador anterior)
         p.setFillColorRGB(0.05, 0.05, 0.05)
         p.rect(0, height - 100, width, 100, fill=1)
         p.setFillColorRGB(0.82, 1, 0)
@@ -422,14 +445,20 @@ def download_contract_real():
         p.drawString(50, y-40, f"Setup: R$ {data['total_setup']:,.2f}")
         p.drawString(50, y-60, f"Mensal: R$ {data['total_monthly']:,.2f}")
         
+        # --- ALTERAÇÃO: CLÁUSULAS CORRIGIDAS (3 REVISÕES) ---
         y -= 100
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES")
+        p.drawString(50, y, "CLÁUSULAS GERAIS E ESCOPO")
         p.setFont("Helvetica", 10)
         y -= 20
-        p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão.")
+        p.drawString(50, y, "1. O CONTRATANTE tem direito a 03 (três) rodadas completas de revisão.")
         y -= 15
-        p.drawString(50, y, "2. Alterações extras serão cobradas a R$ 150,00/hora técnica.")
+        p.drawString(50, y, "2. A mensalidade cobre: Hospedagem, Certificado de Segurança (SSL) e Suporte Técnico.")
+        y -= 15
+        p.drawString(50, y, "3. O domínio (ex: .com.br) deve ser adquirido pelo cliente. A configuração técnica é gratuita.")
+        y -= 15
+        p.drawString(50, y, "4. Os prazos de entrega contam apenas após o envio de todo material pelo cliente.")
+        # -----------------------------------------------------
         
         p.showPage()
         p.save()
@@ -442,9 +471,10 @@ def download_contract_real():
         print(f"Erro PDF Real: {e}")
         return jsonify({"error": "Erro ao gerar contrato"}), 500
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
-# --- ROTA LEGADA (APENAS PARA TESTE/VISUALIZAÇÃO SEM LOGIN) ---
+# --- ROTA LEGADA (ATUALIZADA) ---
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -478,14 +508,20 @@ def generate_contract():
         p.drawString(50, y-40, f"Setup: {data.get('total_setup')}")
         p.drawString(50, y-60, f"Mensal: {data.get('total_monthly')}")
         
+        # --- ALTERAÇÃO: CLÁUSULAS CORRIGIDAS (3 REVISÕES) ---
         y -= 100
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES")
+        p.drawString(50, y, "CLÁUSULAS GERAIS E ESCOPO")
         p.setFont("Helvetica", 10)
         y -= 20
-        p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão.")
+        p.drawString(50, y, "1. O CONTRATANTE tem direito a 03 (três) rodadas completas de revisão.")
         y -= 15
-        p.drawString(50, y, "2. Alterações extras serão cobradas a R$ 150,00/hora técnica.")
+        p.drawString(50, y, "2. A mensalidade cobre: Hospedagem, Certificado de Segurança (SSL) e Suporte Técnico.")
+        y -= 15
+        p.drawString(50, y, "3. O domínio (ex: .com.br) deve ser adquirido pelo cliente. A configuração técnica é gratuita.")
+        y -= 15
+        p.drawString(50, y, "4. Os prazos de entrega contam apenas após o envio de todo material pelo cliente.")
+        # -----------------------------------------------------
         
         p.showPage()
         p.save()
@@ -516,8 +552,7 @@ def signup_checkout():
         else:
             hashed = generate_password_hash(client['password'])
             
-            # --- CORREÇÃO: INSERÇÃO DO DOCUMENTO ---
-            document = client.get('document', '') # Recupera CPF/CNPJ
+            document = client.get('document', '') 
             
             cur.execute("""
                 INSERT INTO clients (name, email, whatsapp, document, password_hash, status, created_at)
@@ -565,7 +600,8 @@ def signup_checkout():
         print(f"Erro Signup Checkout: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 # --- WEBHOOK (ATIVAR CLIENTE) ---
 @app.route('/api/webhook/mercadopago', methods=['POST'])
@@ -594,7 +630,8 @@ def mercadopago_webhook():
                     """, (order_id,))
                     
                     conn.commit()
-                    conn.close()
+                    if db_pool and conn: db_pool.putconn(conn)
+                    elif conn: conn.close()
                     print(f"✅ PAGAMENTO CONFIRMADO: Pedido {order_id} ativado.")
                     
             return jsonify({"status": "ok"}), 200
@@ -645,7 +682,8 @@ def save_briefing():
             VALUES (%s, %s, %s, %s, %s, %s, 'ativo', 3)
         """, (current_user.id, colors, style, sections, ",".join(file_names), tech_prompt))
         conn.commit()
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
         return jsonify({"success": True, "redirect": "/admin"})
     except Exception as e:
@@ -716,7 +754,8 @@ def fix_db():
     except Exception as e:
         return f"Erro ao atualizar DB: {e}"
     finally:
-        conn.close()
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
