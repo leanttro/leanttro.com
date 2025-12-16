@@ -5,7 +5,7 @@ import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory # Adicionado abort e send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -22,9 +22,7 @@ from reportlab.lib.utils import ImageReader
 
 load_dotenv()
 
-# --- ALTERAÇÃO: Configuração explícita da pasta static ---
 app = Flask(__name__, static_folder='static', static_url_path='/static') 
-# ---------------------------------------------------------
 
 app.secret_key = os.getenv('SECRET', 'chave-super-secreta-dev')
 CORS(app)
@@ -38,13 +36,12 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # --- CONFIGURAÇÕES ---
 DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
-# URL base do Directus para montar as imagens (ADICIONADO PARA CORRIGIR AS FOTOS)
 DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
 
 # --- CONFIGURAÇÃO GEMINI (AUTO-DETECT) ---
 GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 chat_model = None
-SELECTED_MODEL_NAME = "gemini-pro" # Fallback padrão
+SELECTED_MODEL_NAME = "gemini-pro"
 
 if GEMINI_KEY:
     try:
@@ -64,7 +61,6 @@ if GEMINI_KEY:
             SELECTED_MODEL_NAME = found_model
             print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
 
-        # PERSONA LELIS (VENDEDOR)
         SYSTEM_PROMPT_LELIS = """
         VOCÊ É: Lelis, Gerente Comercial da Leanttro Digital.
         SUA MISSÃO: Fechar vendas. Você não é suporte, é VENDEDOR.
@@ -158,16 +154,15 @@ def cadastro_page():
 
 @app.route('/login')
 def login_page():
-    # LÓGICA DE REDIRECIONAMENTO INTELIGENTE
     if current_user.is_authenticated:
         conn = get_db_connection()
         try:
             cur = conn.cursor()
             cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
             if cur.fetchone():
-                return redirect(url_for('admin_page')) # Tem briefing -> Admin
+                return redirect(url_for('admin_page'))
             else:
-                return redirect(url_for('briefing_page')) # Não tem -> Briefing
+                return redirect(url_for('briefing_page'))
         finally:
             conn.close()
     return render_template('login.html')
@@ -178,7 +173,6 @@ def briefing_page():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # SE JÁ TIVER BRIEFING, NÃO PODE ACESSAR AQUI, VAI PRO ADMIN
         cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
         if cur.fetchone():
             return redirect(url_for('admin_page'))
@@ -207,7 +201,6 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            # BUSCA DADOS DO BRIEFING PARA EXIBIR/EDITAR
             cur.execute("""
                 SELECT status, revisoes_restantes, colors, style_preference, site_sections 
                 FROM briefings WHERE client_id = %s
@@ -254,20 +247,15 @@ def api_login():
         if user_data and user_data['password_hash']:
             if check_password_hash(user_data['password_hash'], password):
                 
-                # --- TRAVA DE PAGAMENTO ---
-                # Se o status for 'pendente', não deixa entrar
                 if user_data.get('status') == 'pendente':
                     return jsonify({"error": "Pagamento não confirmado. Aguarde o processamento."}), 403
-                # --------------------------
 
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # VERIFICA SE JÁ PREENCHEU BRIEFING
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 
-                # REDIRECIONA CONFORME O STATUS
                 redirect_url = "/admin" if has_briefing else "/briefing"
 
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
@@ -276,7 +264,6 @@ def api_login():
     finally:
         conn.close()
 
-# --- NOVA ROTA: ATUALIZAR BRIEFING (EDITAR) ---
 @app.route('/api/briefing/update', methods=['POST'])
 @login_required
 def update_briefing():
@@ -289,7 +276,6 @@ def update_briefing():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Verifica revisões
         cur.execute("SELECT revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
         res = cur.fetchone()
         
@@ -299,7 +285,6 @@ def update_briefing():
         if revisoes <= 0:
             return jsonify({"error": "Limite de alterações atingido."}), 403
 
-        # 2. Atualiza e desconta 1 revisão
         cur.execute("""
             UPDATE briefings 
             SET colors = %s, style_preference = %s, site_sections = %s, revisoes_restantes = revisoes_restantes - 1
@@ -354,26 +339,21 @@ def get_catalog():
     finally:
         conn.close()
 
-# --- ROTA API CASES (ATUALIZADA PARA CORRIGIR AS FOTOS) ---
 @app.route('/api/cases', methods=['GET'])
 def get_cases():
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Using quotes to handle 'case' being a reserved keyword just in case.
         cur.execute("SELECT id, url, foto_site FROM \"case\" ORDER BY id DESC")
         raw_cases = cur.fetchall()
         
-        # --- CORREÇÃO DE URL (DIRECTUS) ---
         cases = []
         for c in raw_cases:
             case_dict = dict(c)
-            # Se vier só o ID (ex: "e4f5..."), montamos a URL completa.
             if case_dict['foto_site'] and not case_dict['foto_site'].startswith('http'):
                 case_dict['foto_site'] = f"{DIRECTUS_ASSETS_URL}{case_dict['foto_site']}"
             cases.append(case_dict)
-        # ----------------------------------
         
         return jsonify(cases)
     except Exception as e:
@@ -382,6 +362,89 @@ def get_cases():
     finally:
         if conn: conn.close()
 
+# --- ROTA DE DOWNLOAD DO CONTRATO (DADOS REAIS) ---
+@app.route('/api/contract/download', methods=['GET'])
+@login_required
+def download_contract_real():
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "Erro de conexão"}), 500
+    
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Busca dados do cliente e do pedido mais recente
+        cur.execute("""
+            SELECT c.name, c.document, p.name as product_name, p.prazo_products,
+                   o.total_setup, o.total_monthly
+            FROM clients c
+            JOIN orders o ON c.id = o.client_id
+            JOIN products p ON o.product_id = p.id
+            WHERE c.id = %s
+            ORDER BY o.created_at DESC LIMIT 1
+        """, (current_user.id,))
+        
+        data = cur.fetchone()
+        
+        if not data:
+            return jsonify({"error": "Nenhum contrato ativo encontrado."}), 404
+
+        # GERAÇÃO DO PDF
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+        
+        # Design (Mesmo layout do gerador anterior)
+        p.setFillColorRGB(0.05, 0.05, 0.05)
+        p.rect(0, height - 100, width, 100, fill=1)
+        p.setFillColorRGB(0.82, 1, 0)
+        p.setFont("Helvetica-BoldOblique", 24)
+        p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
+        
+        p.setFillColorRGB(0, 0, 0)
+        p.setFont("Helvetica-Bold", 18)
+        p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
+        
+        p.setFont("Helvetica", 12)
+        y = height - 200
+        p.drawString(50, y, f"CONTRATANTE: {data['name'].upper()}")
+        p.drawString(50, y-20, f"DOCUMENTO: {data.get('document', 'Não informado')}")
+        
+        y -= 80
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(50, y, "ESCOPO E PRAZOS")
+        p.setFont("Helvetica", 12)
+        y -= 25
+        p.drawString(50, y, f"Projeto: {data['product_name']}")
+        
+        prazo_str = extract_days(data.get('prazo_products')) or 10
+        p.drawString(50, y-20, f"Entrega Estimada: {prazo_str} dias úteis")
+        
+        p.drawString(50, y-40, f"Setup: R$ {data['total_setup']:,.2f}")
+        p.drawString(50, y-60, f"Mensal: R$ {data['total_monthly']:,.2f}")
+        
+        y -= 100
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, y, "CLÁUSULA DE ALTERAÇÕES E REVISÕES")
+        p.setFont("Helvetica", 10)
+        y -= 20
+        p.drawString(50, y, "1. O CONTRATANTE tem direito a 02 (duas) rodadas completas de revisão.")
+        y -= 15
+        p.drawString(50, y, "2. Alterações extras serão cobradas a R$ 150,00/hora técnica.")
+        
+        p.showPage()
+        p.save()
+        buffer.seek(0)
+        
+        filename = f"Contrato_Leanttro_{current_user.id}.pdf"
+        return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+        
+    except Exception as e:
+        print(f"Erro PDF Real: {e}")
+        return jsonify({"error": "Erro ao gerar contrato"}), 500
+    finally:
+        conn.close()
+
+# --- ROTA LEGADA (APENAS PARA TESTE/VISUALIZAÇÃO SEM LOGIN) ---
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -449,16 +512,18 @@ def signup_checkout():
         existing = cur.fetchone()
         
         if existing:
-            # Se já existir, avisa para fazer login
             return jsonify({"error": "E-mail já cadastrado. Faça login."}), 400
         else:
             hashed = generate_password_hash(client['password'])
-            # Cria cliente PENDENTE
+            
+            # --- CORREÇÃO: INSERÇÃO DO DOCUMENTO ---
+            document = client.get('document', '') # Recupera CPF/CNPJ
+            
             cur.execute("""
-                INSERT INTO clients (name, email, whatsapp, password_hash, status, created_at)
-                VALUES (%s, %s, %s, %s, 'pendente', NOW())
+                INSERT INTO clients (name, email, whatsapp, document, password_hash, status, created_at)
+                VALUES (%s, %s, %s, %s, %s, 'pendente', NOW())
                 RETURNING id
-            """, (client['name'], client['email'], client['whatsapp'], hashed))
+            """, (client['name'], client['email'], client['whatsapp'], document, hashed))
             client_id = cur.fetchone()['id']
         
         addons_ids = cart.get('addon_ids', [])
@@ -476,11 +541,9 @@ def signup_checkout():
         
         conn.commit()
         
-        # --- CORREÇÃO DO WEBHOOK (FIXO) ---
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
         
         preference_data = {
-            # Restaurei o preço REAL aqui para seu cupom funcionar
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": total_setup}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
@@ -489,14 +552,11 @@ def signup_checkout():
                 "failure": "https://leanttro.com/cadastro",
                 "pending": "https://leanttro.com/cadastro"
             },
-            "notification_url": webhook_url, # Essencial para ativar a conta
+            "notification_url": webhook_url,
             "auto_return": "approved"
         }
         
         pref = mp_sdk.preference().create(preference_data)
-        
-        # REMOVIDO: login_user(User(client_id, client['name'], client['email']))
-        # Motivo: Bloquear acesso até pagar.
         
         return jsonify({"checkout_url": pref["response"]["init_point"]})
 
@@ -525,10 +585,8 @@ def mercadopago_webhook():
                     conn = get_db_connection()
                     cur = conn.cursor()
                     
-                    # 1. Atualiza Pedido
                     cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (order_id,))
                     
-                    # 2. Ativa Cliente
                     cur.execute("""
                         UPDATE clients 
                         SET status = 'active' 
@@ -582,7 +640,6 @@ def save_briefing():
 
         conn = get_db_connection()
         cur = conn.cursor()
-        # Salva como ATIVO pois agora só chega aqui se tiver pago
         cur.execute("""
             INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status, revisoes_restantes)
             VALUES (%s, %s, %s, %s, %s, %s, 'ativo', 3)
@@ -644,15 +701,18 @@ def briefing_chat():
     except:
         return jsonify({"reply": "Erro de conexão com a IA."})
 
-# --- ROTA EMERGÊNCIA DB (Mantida para garantir) ---
+# --- ROTA EMERGÊNCIA DB (ATUALIZADA) ---
 @app.route('/fix-db')
 def fix_db():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        # Garante coluna de revisões
         cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
+        # Garante coluna de documento (CPF/CNPJ)
+        cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
         conn.commit()
-        return "Banco Atualizado: Coluna revisoes_restantes criada."
+        return "Banco Atualizado: Colunas 'revisoes_restantes' e 'document' verificadas."
     except Exception as e:
         return f"Erro ao atualizar DB: {e}"
     finally:

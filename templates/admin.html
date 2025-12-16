@@ -35,7 +35,9 @@
         <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
             <div>
                 <div class="font-mono text-xs text-ln-neon mb-2">// STATUS DO PROJETO</div>
-                <h1 class="text-4xl md:text-6xl font-black italic uppercase leading-none">{{ stats.status_projeto }}</h1>
+                <h1 class="text-4xl md:text-6xl font-black italic uppercase leading-none">
+                    {{ stats.status_projeto if stats.status_projeto else 'AGUARDANDO MATERIAL' }}
+                </h1>
             </div>
             <div class="bg-ln-carbon border border-ln-neon/30 px-6 py-3 rounded flex items-center gap-3">
                 <span class="w-2 h-2 bg-ln-neon rounded-full animate-pulse"></span>
@@ -48,7 +50,9 @@
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
                 <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-pen-ruler"></i></div>
                 <div class="font-mono text-xs text-gray-500 mb-1">ALTERAÇÕES RESTANTES</div>
-                <div class="text-3xl font-black uppercase text-white" id="revisoesDisplay">{{ stats.revisoes }} <span class="text-sm font-normal text-gray-500">/ 3</span></div>
+                <div class="text-3xl font-black uppercase text-white" id="revisoesDisplay">
+                    {{ stats.revisoes if stats.revisoes is not none else 3 }} <span class="text-sm font-normal text-gray-500">/ 3</span>
+                </div>
             </div>
 
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group">
@@ -108,7 +112,8 @@
                 <span class="font-bold italic text-lg">FALAR COM SUPORTE TÉCNICO</span>
                 <i class="fa-solid fa-arrow-right -rotate-45 group-hover:rotate-0 transition-transform"></i>
             </a>
-            <button class="flex items-center justify-between p-6 bg-ln-carbon border border-white/5 hover:bg-white hover:text-black transition-all group cursor-pointer">
+            
+            <button id="btnContract" onclick="downloadContract(this)" class="flex items-center justify-between p-6 bg-ln-carbon border border-white/5 hover:bg-white hover:text-black transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-wait disabled:hover:bg-ln-carbon disabled:hover:text-white">
                 <span class="font-bold italic text-lg">VER CONTRATO</span>
                 <i class="fa-solid fa-file-pdf group-hover:scale-110 transition-transform"></i>
             </button>
@@ -118,7 +123,8 @@
 
     <script>
         // Lógica de edição do Briefing
-        const revisoesRestantes = {{ stats.revisoes }};
+        // Se stats.revisoes for nulo no backend, assume 3
+        const revisoesRestantes = {{ stats.revisoes if stats.revisoes is not none else 3 }};
         const btnUpdate = document.getElementById('btnUpdate');
         const statusSpan = document.getElementById('saveStatus');
 
@@ -127,9 +133,11 @@
             if(btnUpdate) {
                 btnUpdate.disabled = true;
                 btnUpdate.innerText = "LIMITE DE ALTERAÇÕES ATINGIDO";
-                document.getElementById('b_colors').disabled = true;
-                document.getElementById('b_style').disabled = true;
-                document.getElementById('b_sections').disabled = true;
+                const fields = ['b_colors', 'b_style', 'b_sections'];
+                fields.forEach(id => {
+                    const el = document.getElementById(id);
+                    if(el) el.disabled = true;
+                });
             }
         }
 
@@ -175,6 +183,44 @@
             } catch (error) {
                 statusSpan.innerText = "ERRO DE CONEXÃO";
                 btnUpdate.disabled = false;
+            }
+        }
+
+        // Função para Download do Contrato (Implementada)
+        async function downloadContract(btn) {
+            const textSpan = btn.querySelector('span');
+            const originalText = textSpan.innerText;
+            
+            try {
+                // Estado de Loading
+                textSpan.innerText = "GERANDO PDF...";
+                btn.disabled = true;
+
+                const response = await fetch('/api/contract/download');
+                
+                if (!response.ok) throw new Error('Falha no download');
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                
+                // Cria link temporário para forçar download
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "Contrato_Leanttro.pdf";
+                document.body.appendChild(a);
+                a.click();
+                
+                // Limpeza
+                a.remove();
+                window.URL.revokeObjectURL(url);
+
+            } catch (error) {
+                console.error(error);
+                alert("Não foi possível baixar o contrato no momento. Tente novamente mais tarde.");
+            } finally {
+                // Restaura estado original
+                textSpan.innerText = originalText;
+                btn.disabled = false;
             }
         }
     </script>
