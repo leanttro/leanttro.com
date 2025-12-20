@@ -5,7 +5,7 @@ import json
 import psycopg2
 import psycopg2.extras
 from psycopg2 import pool # ADICIONADO: Importação do Pool
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -130,6 +130,64 @@ def get_db_connection():
         print(f"❌ Erro de Conexão DB: {e}")
         return None
 
+# --- NOVA FUNÇÃO: VERIFICAR STATUS FINANCEIRO ---
+def get_financial_status(client_id):
+    """
+    Retorna o status financeiro do cliente.
+    Status possíveis: 'ok', 'pending' (vencendo hoje/recente), 'overdue' (atrasado > 3 dias)
+    """
+    conn = get_db_connection()
+    status_info = {
+        "status": "ok", 
+        "message": "EM DIA", 
+        "due_date": None, 
+        "amount": 0.0,
+        "invoice_id": None
+    }
+    
+    if not conn: return status_info
+
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Busca faturas pendentes ordenadas por vencimento
+        cur.execute("""
+            SELECT id, amount, due_date, status 
+            FROM invoices 
+            WHERE client_id = %s AND status = 'pending' 
+            ORDER BY due_date ASC LIMIT 1
+        """, (client_id,))
+        invoice = cur.fetchone()
+        
+        if invoice:
+            today = date.today()
+            due_date = invoice['due_date']
+            
+            status_info["amount"] = float(invoice['amount'])
+            status_info["due_date"] = due_date.strftime('%d/%m/%Y')
+            status_info["invoice_id"] = invoice['id']
+            
+            delta_days = (today - due_date).days
+            
+            if delta_days > 3:
+                status_info["status"] = "overdue"
+                status_info["message"] = f"ATRASADO ({delta_days} DIAS)"
+            elif delta_days >= 0:
+                status_info["status"] = "pending"
+                status_info["message"] = "VENCE HOJE" if delta_days == 0 else f"VENCEU HÁ {delta_days} DIA(S)"
+            else:
+                # Fatura futura, mas já gerada (ainda OK para o sistema de bloqueio, mas mostramos aviso se quiser)
+                status_info["status"] = "ok" 
+                status_info["message"] = f"PRÓXIMA: {status_info['due_date']}"
+
+    except Exception as e:
+        print(f"Erro Financial Status: {e}")
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+        
+    return status_info
+
+
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
@@ -203,10 +261,14 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
+    # Pega status financeiro
+    fin_status = get_financial_status(current_user.id)
+    
     stats = {
         "users": 0, "orders": 0, "revenue": 0.0, 
         "status_projeto": "AGUARDANDO", "revisoes": 3,
-        "briefing_data": None
+        "briefing_data": None,
+        "financeiro": fin_status # Adicionado ao objeto stats
     }
     try:
         if conn:
@@ -290,6 +352,12 @@ def api_login():
 @app.route('/api/briefing/update', methods=['POST'])
 @login_required
 def update_briefing():
+    # --- BLOQUEIO FINANCEIRO ---
+    fin_status = get_financial_status(current_user.id)
+    if fin_status['status'] == 'overdue':
+        return jsonify({"error": "Acesso bloqueado por pendência financeira. Regularize para editar."}), 403
+    # ---------------------------
+
     data = request.json
     colors = data.get('colors')
     style = data.get('style')
@@ -319,6 +387,65 @@ def update_briefing():
 
     except Exception as e:
         conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+
+# --- NOVA ROTA: GERAR PIX MENSALIDADE ---
+@app.route('/api/pay_monthly', methods=['POST'])
+@login_required
+def pay_monthly():
+    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    
+    data = request.json
+    invoice_id = data.get('invoice_id')
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Valida se a fatura pertence ao usuário e está pendente
+        cur.execute("SELECT id, amount, due_date FROM invoices WHERE id = %s AND client_id = %s AND status = 'pending'", (invoice_id, current_user.id))
+        invoice = cur.fetchone()
+        
+        if not invoice:
+            return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
+
+        # Cria Preferência MP
+        preference_data = {
+            "items": [{
+                "id": f"INV-{invoice['id']}",
+                "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": float(invoice['amount'])
+            }],
+            "payer": {
+                "name": current_user.name,
+                "email": current_user.email
+            },
+            "payment_methods": {
+                "excluded_payment_types": [{"id": "credit_card"}],
+                "installments": 1
+            },
+            "external_reference": f"INV-{invoice['id']}" 
+        }
+
+        # Criação focada em PIX
+        pref = mp_sdk.preference().create(preference_data)
+        
+        # Como o MP retorna URL de checkout, mas queremos o Copy Paste direto,
+        # idealmente usaríamos a API v1/payments, mas para simplificar com o SDK Preference:
+        # Retornamos o link do checkout que abre o Pix.
+        # OU: Se quiser o copy-paste direto, precisamos criar um pagamento pendente.
+        # Vamos retornar o init_point por enquanto, que é mais seguro com o SDK básico.
+        
+        return jsonify({
+            "checkout_url": pref["response"]["init_point"],
+            "invoice_id": invoice_id
+        })
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -615,9 +742,22 @@ def mercadopago_webhook():
             if payment_info["status"] == 200:
                 data = payment_info["response"]
                 status = data['status']
-                order_id = data['external_reference']
+                ref = data['external_reference']
                 
-                if status == 'approved' and order_id:
+                # Se for pagamento de Fatura (INV-123)
+                if ref and ref.startswith('INV-'):
+                    invoice_id = ref.split('-')[1]
+                    if status == 'approved':
+                         conn = get_db_connection()
+                         cur = conn.cursor()
+                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = %s", (invoice_id,))
+                         conn.commit()
+                         if db_pool and conn: db_pool.putconn(conn)
+                         elif conn: conn.close()
+                
+                # Se for pagamento de Setup (Order ID puro)
+                elif status == 'approved' and ref:
+                    order_id = ref
                     conn = get_db_connection()
                     cur = conn.cursor()
                     
@@ -703,7 +843,7 @@ def handle_chat():
         
         gemini_history = []
         for message in history:
-            role = 'user' if message['role'] == 'user' else 'model'
+            role = 'user' if message['user'] == 'user' else 'model'
             gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
             
         chat_session = chat_model.start_chat(history=gemini_history)
@@ -749,8 +889,22 @@ def fix_db():
         cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
         # Garante coluna de documento (CPF/CNPJ)
         cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
+        
+        # --- TABELA DE FATURAS (INVOICES) ---
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id),
+                amount DECIMAL(10,2) NOT NULL,
+                due_date DATE NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending', -- pending, paid, overdue
+                created_at TIMESTAMP DEFAULT NOW(),
+                paid_at TIMESTAMP
+            );
+        """)
+        
         conn.commit()
-        return "Banco Atualizado: Colunas 'revisoes_restantes' e 'document' verificadas."
+        return "Banco Atualizado: Tabela 'invoices' e colunas verificadas."
     except Exception as e:
         return f"Erro ao atualizar DB: {e}"
     finally:
