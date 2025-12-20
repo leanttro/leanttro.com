@@ -4,7 +4,7 @@ import io
 import json
 import psycopg2
 import psycopg2.extras
-from psycopg2 import pool
+from psycopg2 import pool # ADICIONADO: Importação do Pool
 from datetime import datetime, timedelta, date
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory
 from flask_cors import CORS
@@ -38,9 +38,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
-COMPANY_CNPJ = "63.556.406/0001-75"
+COMPANY_CNPJ = "63.556.406/0001-75" # CNPJ adicionado
 
-# --- CONFIGURAÇÃO DB POOL ---
+# --- CONFIGURAÇÃO DB POOL (ADICIONADO) ---
 db_pool = None
 try:
     if DB_URL:
@@ -74,6 +74,7 @@ if GEMINI_KEY:
             SELECTED_MODEL_NAME = found_model
             print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
 
+        # --- ALTERAÇÃO: PERSONA LELIS CONSULTOR ---
         SYSTEM_PROMPT_LELIS = """
         VOCÊ É: Lelis, Consultor Executivo da Leanttro Digital.
         SUA MISSÃO: Fechar contratos de alto valor passando autoridade e segurança técnica.
@@ -113,25 +114,24 @@ login_manager.init_app(app)
 login_manager.login_view = 'login_page'
 
 class User(UserMixin):
-    def __init__(self, id, name, email, role='user', status='active'):
+    def __init__(self, id, name, email, role='user'):
         self.id = id
         self.name = name
         self.email = email
         self.role = role
-        self.status = status
 
-# --- GET DB CONNECTION COM POOL ---
+# --- ALTERAÇÃO: GET DB CONNECTION COM POOL ---
 def get_db_connection():
     try:
         if db_pool:
             return db_pool.getconn()
         else:
-            return psycopg2.connect(DB_URL) 
+            return psycopg2.connect(DB_URL) # Fallback se o pool falhar
     except Exception as e:
         print(f"❌ Erro de Conexão DB: {e}")
         return None
 
-# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES) ---
+# --- NOVA FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES) ---
 def ensure_future_invoices(client_id):
     """Garante que o cliente tenha as próximas 12 mensalidades geradas no sistema."""
     conn = get_db_connection()
@@ -139,31 +139,37 @@ def ensure_future_invoices(client_id):
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Só gera fatura se tiver pedido APROVADO com mensalidade
-        cur.execute("SELECT total_monthly FROM orders WHERE client_id = %s AND payment_status = 'approved' ORDER BY id DESC LIMIT 1", (client_id,))
+        # 1. Pega valor da mensalidade do contrato
+        cur.execute("SELECT total_monthly FROM orders WHERE client_id = %s ORDER BY id DESC LIMIT 1", (client_id,))
         order = cur.fetchone()
         
         if not order or float(order['total_monthly']) <= 0:
-            return 
+            return # Sem mensalidade
 
         monthly_price = float(order['total_monthly'])
 
+        # 2. Verifica qual a última fatura gerada
         cur.execute("SELECT due_date FROM invoices WHERE client_id = %s ORDER BY due_date DESC LIMIT 1", (client_id,))
         last_inv = cur.fetchone()
         
         start_date = date.today()
         if last_inv:
+            # Começa no mês seguinte à última fatura
             start_date = last_inv['due_date'] + timedelta(days=30)
         else:
+            # Se nunca teve fatura, começa daqui 30 dias (pós setup)
             start_date = date.today() + timedelta(days=30)
 
+        # 3. Conta quantas faturas pendentes existem hoje
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
         count_pending = cur.fetchone()['c']
         
+        # Queremos ter sempre 12 faturas lançadas no futuro
         needed = 12 - count_pending
         
         if needed > 0:
             for i in range(needed):
+                # Cálculo simples (+30 dias por iteração para simular mês)
                 due_dt = start_date + timedelta(days=(30 * i))
                 cur.execute("""
                     INSERT INTO invoices (client_id, amount, due_date, status)
@@ -178,13 +184,13 @@ def ensure_future_invoices(client_id):
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- FUNÇÃO: DASHBOARD FINANCEIRO COMPLETO ---
+# --- NOVA FUNÇÃO: DASHBOARD FINANCEIRO COMPLETO ---
 def get_financial_dashboard(client_id):
-    ensure_future_invoices(client_id)
+    ensure_future_invoices(client_id) # Garante que existem dados
     
     conn = get_db_connection()
     info = {
-        "status_global": "ok", 
+        "status_global": "ok", # ok, warning (hoje), overdue (atrasado)
         "message": "EM DIA",
         "invoices": [],
         "total_pending": 0.0,
@@ -195,6 +201,7 @@ def get_financial_dashboard(client_id):
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Busca TODAS as pendentes (não só a primeira)
         cur.execute("""
             SELECT id, amount, due_date, status 
             FROM invoices 
@@ -209,6 +216,7 @@ def get_financial_dashboard(client_id):
             due = inv['due_date']
             delta = (today - due).days
             
+            # Formata para o Front
             inv_data = {
                 "id": inv['id'],
                 "amount": float(inv['amount']),
@@ -217,6 +225,7 @@ def get_financial_dashboard(client_id):
                 "class": "text-white"
             }
             
+            # Lógica de status global (se tiver UMA atrasada, bloqueia tudo)
             if delta > 3:
                 info["status_global"] = "overdue"
                 info["message"] = "BLOQUEADO (FATURA ATRASADA)"
@@ -231,6 +240,7 @@ def get_financial_dashboard(client_id):
             info["invoices"].append(inv_data)
             info["total_pending"] += float(inv['amount'])
 
+        # Cálculo do desconto de 10% se pagar tudo
         if info["total_pending"] > 0:
             info["total_annual_discounted"] = info["total_pending"] * 0.90
 
@@ -252,14 +262,13 @@ def load_user(user_id):
         u = cur.fetchone()
         if u:
             role = 'admin' if u.get('status') == 'admin' else 'user'
-            # ATUALIZAÇÃO: Passa o status para a classe User
-            return User(u['id'], u['name'], u['email'], role, u['status'])
+            return User(u['id'], u['name'], u['email'], role)
         return None
     except Exception as e:
         print(f"Erro Auth Loader: {e}")
         return None
     finally:
-        if db_pool and conn: db_pool.putconn(conn) 
+        if db_pool and conn: db_pool.putconn(conn) # Devolve pro pool
         elif conn: conn.close()
 
 # --- HELPER FUNCTIONS ---
@@ -285,16 +294,22 @@ def cadastro_page():
 @app.route('/login')
 def login_page():
     if current_user.is_authenticated:
-        return redirect(url_for('admin_page'))
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
+            if cur.fetchone():
+                return redirect(url_for('admin_page'))
+            else:
+                return redirect(url_for('briefing_page'))
+        finally:
+            if db_pool and conn: db_pool.putconn(conn)
+            elif conn: conn.close()
     return render_template('login.html')
 
 @app.route('/briefing')
 @login_required
 def briefing_page():
-    # Se status for pendente, joga pro Admin pagar o setup
-    if current_user.status == 'pendente':
-        return redirect(url_for('admin_page'))
-
     conn = get_db_connection()
     try:
         cur = conn.cursor()
@@ -310,20 +325,15 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
-    
+    # Pega status financeiro COMPLETO (com lista e desconto)
     fin_dashboard = get_financial_dashboard(current_user.id)
     
     stats = {
         "users": 0, "orders": 0, "revenue": 0.0, 
         "status_projeto": "AGUARDANDO", "revisoes": 3,
         "briefing_data": None,
-        "financeiro": fin_dashboard,
-        "pending_setup": False,
-        "setup_order_id": None,
-        "setup_value": 0.0,
-        "available_addons": []
+        "financeiro": fin_dashboard # Injeta o objeto completo
     }
-    
     try:
         if conn:
             cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -336,23 +346,6 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            # VERIFICA SETUP PENDENTE (LOGIN LIBERADO MAS BLOQUEADO)
-            cur.execute("""
-                SELECT id, total_setup FROM orders 
-                WHERE client_id = %s AND payment_status = 'pending' 
-                ORDER BY id ASC LIMIT 1
-            """, (current_user.id,))
-            pending_order = cur.fetchone()
-            
-            if pending_order:
-                stats['pending_setup'] = True
-                stats['setup_order_id'] = pending_order['id']
-                stats['setup_value'] = float(pending_order['total_setup'])
-            
-            # CARREGA ADDONS
-            cur.execute("SELECT id, name, price_setup, price_monthly, description FROM addons WHERE is_active = TRUE")
-            stats['available_addons'] = [dict(a) for a in cur.fetchall()]
-
             cur.execute("""
                 SELECT status, revisoes_restantes, colors, style_preference, site_sections 
                 FROM briefings WHERE client_id = %s
@@ -373,7 +366,7 @@ def admin_page():
             
     except Exception as e:
         print(f"Erro Admin: {e}")
-        if db_pool and conn: db_pool.putconn(conn)
+        if db_pool and conn: db_pool.putconn(conn) # Garantia extra
         pass
     return render_template('admin.html', user=current_user, stats=stats)
 
@@ -402,14 +395,12 @@ def api_login():
         if user_data and user_data['password_hash']:
             if check_password_hash(user_data['password_hash'], password):
                 
-                # ALTERADO: Permitimos login mesmo com status pendente para ele poder pagar
-                user_obj = User(user_data['id'], user_data['name'], user_data['email'], 'user', user_data['status'])
+                if user_data.get('status') == 'pendente':
+                    return jsonify({"error": "Pagamento não confirmado. Aguarde o processamento."}), 403
+
+                user_obj = User(user_data['id'], user_data['name'], user_data['email'])
                 login_user(user_obj)
                 
-                # Se for pendente, vai pro admin pagar
-                if user_data['status'] == 'pendente':
-                    return jsonify({"message": "Redirecionando para pagamento", "redirect": "/admin"})
-
                 cur.execute("SELECT id FROM briefings WHERE client_id = %s", (user_data['id'],))
                 has_briefing = cur.fetchone()
                 
@@ -418,80 +409,6 @@ def api_login():
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
         
         return jsonify({"error": "Credenciais inválidas"}), 401
-    finally:
-        if db_pool and conn: db_pool.putconn(conn)
-        elif conn: conn.close()
-
-# --- NOVO: PAGAR SETUP PENDENTE (RECUPERAÇÃO) ---
-@app.route('/api/pay_setup', methods=['POST'])
-@login_required
-def pay_setup():
-    data = request.json
-    order_id = data.get('order_id')
-    
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT total_setup, product_id FROM orders WHERE id = %s AND client_id = %s AND payment_status = 'pending'", (order_id, current_user.id))
-        order = cur.fetchone()
-        
-        if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
-
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(order['total_setup'])
-        
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
-
-        preference_data = {
-            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
-            "payer": {"name": current_user.name, "email": current_user.email},
-            "external_reference": str(order_id),
-            "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
-        }
-        
-        pref = mp_sdk.preference().create(preference_data)
-        return jsonify({"checkout_url": pref["response"]["init_point"]})
-    finally:
-        if db_pool and conn: db_pool.putconn(conn)
-        elif conn: conn.close()
-
-# --- NOVO: COMPRAR ADDON (UPGRADE) ---
-@app.route('/api/buy_addon', methods=['POST'])
-@login_required
-def buy_addon():
-    addon_id = request.json.get('addon_id')
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT name, price_setup, price_monthly FROM addons WHERE id = %s", (addon_id,))
-        addon = cur.fetchone()
-        
-        if not addon: return jsonify({"error": "Item inválido"}), 400
-
-        # Cria um pedido avulso só para o addon
-        cur.execute("""
-            INSERT INTO orders (client_id, product_id, selected_addons, total_setup, total_monthly, payment_status, created_at)
-            VALUES (%s, NULL, %s, %s, %s, 'pending', NOW())
-            RETURNING id
-        """, (current_user.id, json.dumps([addon_id]), addon['price_setup'], addon['price_monthly']))
-        new_order_id = cur.fetchone()['id']
-        conn.commit()
-
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(addon['price_setup'])
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
-
-        preference_data = {
-            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
-            "payer": {"name": current_user.name, "email": current_user.email},
-            "external_reference": str(new_order_id),
-            "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
-        }
-        pref = mp_sdk.preference().create(preference_data)
-        return jsonify({"checkout_url": pref["response"]["init_point"]})
     finally:
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
@@ -558,15 +475,15 @@ def pay_monthly():
         if not invoice:
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(invoice['amount'])
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
-
         # Cria Preferência MP
         preference_data = {
-            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{
+                "id": f"INV-{invoice['id']}",
+                "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 1.00
+            }],
             "payer": {
                 "name": current_user.name,
                 "email": current_user.email
@@ -604,12 +521,6 @@ def pay_annual():
     if total_discounted <= 0:
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
-    # --- VALOR REAL (COMENTADO) ---
-    # unit_price = float(f"{total_discounted:.2f}")
-
-    # --- VALOR DE TESTE (ATIVO) ---
-    unit_price = 1.00
-
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
         "items": [{
@@ -617,7 +528,7 @@ def pay_annual():
             "title": f"Antecipação Anual Leanttro (10% OFF) - {len(fin['invoices'])} Parcelas", 
             "quantity": 1, 
             "currency_id": "BRL", 
-            "unit_price": unit_price
+            "unit_price": float(f"{total_discounted:.2f}")
         }],
         "payer": {
             "name": current_user.name,
@@ -893,15 +804,9 @@ def signup_checkout():
         conn.commit()
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
-
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = total_setup
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
         
         preference_data = {
-            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": unit_price}],
+            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": total_setup}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
@@ -939,31 +844,48 @@ def mercadopago_webhook():
                 status = data['status']
                 ref = data['external_reference']
                 
-                if status == 'approved' and ref:
+                # Se for pagamento de Fatura (INV-123)
+                if ref and ref.startswith('INV-'):
+                    invoice_id = ref.split('-')[1]
+                    if status == 'approved':
+                         conn = get_db_connection()
+                         cur = conn.cursor()
+                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = %s", (invoice_id,))
+                         conn.commit()
+                         if db_pool and conn: db_pool.putconn(conn)
+                         elif conn: conn.close()
+                
+                # --- NOVO: PAGAMENTO ANUAL (ANNUAL-CLIENTID) ---
+                elif ref and ref.startswith('ANNUAL-'):
+                    client_id_webhook = ref.split('-')[1]
+                    if status == 'approved':
+                         conn = get_db_connection()
+                         cur = conn.cursor()
+                         # Paga TODAS as faturas pendentes desse cliente
+                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE client_id = %s AND status = 'pending'", (client_id_webhook,))
+                         conn.commit()
+                         if db_pool and conn: db_pool.putconn(conn)
+                         elif conn: conn.close()
+                
+                # Se for pagamento de Setup (Order ID puro)
+                elif status == 'approved' and ref:
+                    order_id = ref
                     conn = get_db_connection()
                     cur = conn.cursor()
                     
-                    if ref.startswith('INV-'): # Mensalidade
-                        invoice_id = ref.split('-')[1]
-                        cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = %s", (invoice_id,))
+                    cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (order_id,))
                     
-                    elif ref.startswith('ADDON-'): # Compra de Addon dentro do painel
-                        order_id = ref.split('-')[1] # No create addon usamos ADDON-OrderID
-                        # Atualiza a order específica
-                        cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (order_id,))
-                        
-                    elif ref.startswith('ANNUAL-'): # Pagamento Anual
-                        client_id_webhook = ref.split('-')[1]
-                        # Paga TODAS as faturas pendentes desse cliente
-                        cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE client_id = %s AND status = 'pending'", (client_id_webhook,))
-
-                    else: # Setup Inicial (ID do pedido puro)
-                        cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (ref,))
-                        cur.execute("UPDATE clients SET status = 'active' WHERE id = (SELECT client_id FROM orders WHERE id = %s)", (ref,))
+                    cur.execute("""
+                        UPDATE clients 
+                        SET status = 'active' 
+                        WHERE id = (SELECT client_id FROM orders WHERE id = %s)
+                    """, (order_id,))
                     
                     conn.commit()
                     if db_pool and conn: db_pool.putconn(conn)
                     elif conn: conn.close()
+                    print(f"✅ PAGAMENTO CONFIRMADO: Pedido {order_id} ativado.")
+                    
             return jsonify({"status": "ok"}), 200
         except Exception as e:
             print(f"Erro Webhook: {e}")

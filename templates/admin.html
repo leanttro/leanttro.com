@@ -227,7 +227,7 @@
         </div>
     </div>
 
-    <div id="pixModal" class="fixed inset-0 z-[120] hidden items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+    <div id="pixModal" class="fixed inset-0 z-[300] hidden items-center justify-center p-4 bg-black/95 backdrop-blur-md">
         <div class="bg-ln-carbon border border-ln-neon max-w-sm w-full p-8 text-center relative">
             <button onclick="document.getElementById('pixModal').classList.add('hidden')" class="absolute top-2 right-2 text-gray-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
             <div class="w-12 h-12 bg-ln-neon text-black rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"><i class="fa-brands fa-pix"></i></div>
@@ -255,7 +255,43 @@
         
         async function updateBriefing() {
              if (revisoesRestantes <= 0 || btnUpdate.disabled) return;
-             // ... (Lógica de updateBriefing mantida igual)
+             
+             const colors = document.getElementById('b_colors').value;
+             const style = document.getElementById('b_style').value;
+             const sections = document.getElementById('b_sections').value;
+
+             btnUpdate.innerText = "SALVANDO...";
+             btnUpdate.disabled = true;
+
+             try {
+                 const response = await fetch('/api/briefing/update', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ colors, style, sections })
+                 });
+
+                 const data = await response.json();
+
+                 if (response.ok) {
+                     statusSpan.innerText = "ALTERAÇÃO SALVA!";
+                     statusSpan.className = "text-xs font-mono text-ln-neon";
+                     document.getElementById('revisoesDisplay').innerHTML = `${data.revisoes_restantes} <span class="text-sm font-normal text-gray-500">/ 3</span>`;
+                     if (data.revisoes_restantes <= 0) {
+                         setTimeout(() => window.location.reload(), 1500);
+                     } else {
+                         btnUpdate.innerText = "SALVAR ALTERAÇÕES";
+                         btnUpdate.disabled = false;
+                     }
+                 } else {
+                     statusSpan.innerText = "ERRO: " + (data.error || "Erro");
+                     statusSpan.className = "text-xs font-mono text-red-500";
+                     btnUpdate.innerText = "TENTAR NOVAMENTE";
+                     btnUpdate.disabled = false;
+                 }
+             } catch (error) {
+                 statusSpan.innerText = "ERRO DE CONEXÃO";
+                 btnUpdate.disabled = false;
+             }
         }
 
         // --- FUNÇÕES FINANCEIRAS ---
@@ -270,13 +306,27 @@
 
         function showPixModal(url) {
             const modal = document.getElementById('pixModal');
-            document.getElementById('checkoutLink').href = url;
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            const link = document.getElementById('checkoutLink');
+            
+            if(link) {
+                link.href = url;
+                console.log("Link de checkout definido:", url);
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                // Força o Z-index via JS caso o CSS falhe, mas a classe já resolve
+                modal.style.zIndex = "9999"; 
+            } else {
+                console.error("Elemento checkoutLink não encontrado");
+            }
         }
 
         // 1. Pagar Setup Pendente (Tela de Bloqueio)
         async function payPendingSetup(orderId) {
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = "GERANDO...";
+            btn.disabled = true;
+
             try {
                 const res = await fetch('/api/pay_setup', {
                     method: 'POST',
@@ -284,9 +334,19 @@
                     body: JSON.stringify({ order_id: orderId })
                 });
                 const data = await res.json();
-                if(res.ok) showPixModal(data.checkout_url);
-                else alert(data.error);
-            } catch(e) { alert("Erro de conexão"); }
+                
+                if(res.ok) {
+                    showPixModal(data.checkout_url);
+                } else {
+                    alert("Erro: " + data.error);
+                }
+            } catch(e) {
+                console.error(e);
+                alert("Erro de conexão ao tentar pagar.");
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }
 
         // 2. Comprar Addon (Loja)
@@ -318,8 +378,25 @@
         }
         
         async function downloadContract(btn) {
-             // ... (Lógica de download mantida igual)
-             alert("Contrato será atualizado após a confirmação do pagamento inicial.");
+            const textSpan = btn.querySelector('span');
+            const originalText = textSpan.innerText;
+            try {
+                textSpan.innerText = "GERANDO PDF...";
+                btn.disabled = true;
+                const response = await fetch('/api/contract/download');
+                if (!response.ok) throw new Error('Falha no download');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = "Contrato_Leanttro.pdf";
+                document.body.appendChild(a); a.click(); a.remove();
+            } catch (error) { 
+                console.error(error);
+                alert("Erro ao baixar. Verifique se seu contrato já foi gerado."); 
+            } finally { 
+                textSpan.innerText = originalText; 
+                btn.disabled = false; 
+            }
         }
     </script>
 </body>
