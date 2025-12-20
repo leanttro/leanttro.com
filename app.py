@@ -441,7 +441,7 @@ def pay_setup():
         # unit_price = float(order['total_setup'])
         
         # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        unit_price = 10.00
 
         preference_data = {
             "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -482,7 +482,7 @@ def buy_addon():
         # unit_price = float(addon['price_setup'])
 
         # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        unit_price = 10.00
 
         preference_data = {
             "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -562,7 +562,7 @@ def pay_monthly():
         # unit_price = float(invoice['amount'])
 
         # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        unit_price = 10.00
 
         # Cria Preferência MP
         preference_data = {
@@ -608,7 +608,7 @@ def pay_annual():
     # unit_price = float(f"{total_discounted:.2f}")
 
     # --- VALOR DE TESTE (ATIVO) ---
-    unit_price = 1.00
+    unit_price = 10.00
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
@@ -898,7 +898,7 @@ def signup_checkout():
         # unit_price = total_setup
 
         # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        unit_price = 10.00
         
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": unit_price}],
