@@ -403,9 +403,14 @@ def admin_page():
                 stats['setup_order_id'] = pending_order['id']
                 stats['setup_value'] = float(pending_order['total_setup'])
             
-            # CARREGA ADDONS
-            cur.execute("SELECT id, name, price_setup, price_monthly, description FROM addons WHERE is_active = TRUE")
-            stats['available_addons'] = [dict(a) for a in cur.fetchall()]
+            # CARREGA ADDONS (Correção: Remove WHERE is_active para garantir que pegue o que tem no banco)
+            try:
+                # Seus addons do Directus já existem, então vamos selecionar tudo.
+                cur.execute("SELECT id, name, price_setup, price_monthly, description FROM addons")
+                stats['available_addons'] = [dict(a) for a in cur.fetchall()]
+            except Exception as e_addon:
+                print(f"Erro ao carregar addons: {e_addon}")
+                stats['available_addons'] = []
 
             cur.execute("""
                 SELECT status, revisoes_restantes, colors, style_preference, site_sections 
@@ -723,8 +728,7 @@ def pay_annual():
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
-        "items": [{
-            "id": "ANNUAL", 
+        "items": [{"id": "ANNUAL", 
             "title": f"Antecipação Anual Leanttro (10% OFF) - {len(fin['invoices'])} Parcelas", 
             "quantity": 1, 
             "currency_id": "BRL", 
@@ -1200,9 +1204,22 @@ def fix_db():
                 paid_at TIMESTAMP
             );
         """)
+
+        # --- CORREÇÃO: TABELA ADDONS (SEM INSERT PARA NÃO DUPLICAR) ---
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS addons (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                price_setup DECIMAL(10,2) NOT NULL,
+                price_monthly DECIMAL(10,2) DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                prazo_addons INTEGER DEFAULT 2
+            );
+        """)
         
         conn.commit()
-        return "Banco Atualizado: Tabela 'invoices' e colunas verificadas."
+        return "Banco Verificado com Sucesso (Tabelas invoices e addons)"
     except Exception as e:
         return f"Erro ao atualizar DB: {e}"
     finally:

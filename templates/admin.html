@@ -84,6 +84,15 @@
             </div>
 
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group relative overflow-hidden">
+                <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-calendar-days"></i></div>
+                <div class="font-mono text-xs text-gray-500 mb-1">PREVISÃO DE ENTREGA</div>
+                <div class="text-xl font-bold uppercase">10 DIAS ÚTEIS</div>
+                <div class="text-[10px] font-mono text-ln-neon mt-2 border-t border-white/10 pt-2 font-bold">
+                    * APÓS PREENCHIMENTO COMPLETO DO BRIEFING
+                </div>
+            </div>
+
+            <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group relative overflow-hidden">
                 <div class="absolute top-0 right-0 bg-ln-neon text-black text-[10px] font-bold px-2 py-1">UPGRADE</div>
                 <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-cart-plus"></i></div>
                 <div class="font-mono text-xs text-gray-500 mb-1">LOJA DE EXPANSÃO</div>
@@ -105,7 +114,7 @@
                 {% else %}
                     <div class="text-xl font-bold uppercase text-green-500">{{ stats.financeiro.message }}</div>
                     <button onclick="openFinanceModal()" class="w-full mt-3 bg-white/10 hover:bg-ln-neon hover:text-black border border-white/20 text-white font-bold text-xs uppercase py-2 px-4 transition-all">
-                        VER FATURAS
+                        ADIANTAR MENSALIDADES
                     </button>
                 {% endif %}
             </div>
@@ -175,7 +184,7 @@
         <div class="bg-ln-carbon border border-white/20 max-w-2xl w-full p-8 relative shadow-2xl flex flex-col max-h-[90vh]">
             <button onclick="closeFinanceModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-black italic uppercase text-white mb-2">CENTRAL FINANCEIRA</h3>
-            <p class="text-sm font-mono text-gray-400 mb-6">Gerencie suas mensalidades.</p>
+            <p class="text-sm font-mono text-gray-400 mb-6">Gerencie ou adiante suas mensalidades.</p>
             
             <div class="overflow-y-auto flex-grow pr-2 custom-scrollbar space-y-2">
                 {% for inv in stats.financeiro.invoices %}
@@ -186,12 +195,14 @@
                     </div>
                     <div class="flex items-center gap-4">
                         <div class="font-mono text-white">R$ {{ "%.2f"|format(inv.amount) }}</div>
-                        <button onclick="paySingle({{ inv.id }})" class="text-xs border border-white/20 hover:bg-white hover:text-black px-3 py-1 uppercase transition-colors">PAGAR</button>
+                        <button onclick="paySingle({{ inv.id }})" class="text-xs border border-white/20 hover:bg-white hover:text-black px-3 py-1 uppercase transition-colors">
+                            {{ 'PAGAR AGORA' if inv.status_label == 'ATRASADO' else 'ADIANTAR PAGAMENTO' }}
+                        </button>
                     </div>
                 </div>
                 {% endfor %}
                 {% if stats.financeiro.invoices|length == 0 %}
-                <div class="text-center text-gray-500 py-8 font-mono">Nenhuma fatura pendente. 🎉</div>
+                <div class="text-center text-gray-500 py-8 font-mono">Nenhuma fatura futura gerada.</div>
                 {% endif %}
             </div>
         </div>
@@ -240,7 +251,6 @@
     </div>
 
     <script>
-        // ... (Funções anteriores de Briefing e Download do Contrato mantidas) ...
         const revisoesRestantes = {{ stats.revisoes if stats.revisoes is not none else 3 }};
         const btnUpdate = document.getElementById('btnUpdate');
         const statusSpan = document.getElementById('saveStatus');
@@ -294,7 +304,6 @@
              }
         }
 
-        // --- FUNÇÕES FINANCEIRAS ---
         function openFinanceModal() {
             document.getElementById('financeModal').classList.remove('hidden');
             document.getElementById('financeModal').classList.add('flex');
@@ -313,7 +322,6 @@
                 console.log("Link de checkout definido:", url);
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
-                // Força o Z-index via JS caso o CSS falhe, mas a classe já resolve
                 modal.style.zIndex = "9999"; 
             } else {
                 console.error("Elemento checkoutLink não encontrado");
@@ -363,7 +371,7 @@
             } catch(e) { alert("Erro de conexão"); }
         }
 
-        // 3. Pagar Mensalidade
+        // 3. Pagar Mensalidade (ou Adiantar)
         async function paySingle(invoiceId) {
             try {
                 const res = await fetch('/api/pay_monthly', {
