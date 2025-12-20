@@ -233,9 +233,6 @@ def ensure_future_invoices(client_id):
                 month = (next_month - 1) % 12 + 1
                 year = base_date.year + year_offset
                 
-                # Se for a primeira fatura e hoje já passou do dia 10, joga pro outro mês
-                # Mas como estamos usando base_date incremental no loop, a lógica acima funciona para a sequência
-                
                 due_dt = date(year, month, 10)
                 
                 # Verifica duplicidade antes de inserir
@@ -590,8 +587,11 @@ def pay_setup():
         
         if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
-        # --- VALOR REAL (OFICIAL) ---
-        unit_price = float(order['total_setup'])
+        # --- VALOR REAL (COMENTADO) ---
+        # unit_price = float(order['total_setup'])
+        
+        # --- VALOR DE TESTE (ATIVO) ---
+        unit_price = 1.00
 
         preference_data = {
             "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -628,8 +628,11 @@ def buy_addon():
         new_order_id = cur.fetchone()['id']
         conn.commit()
 
-        # --- VALOR REAL (OFICIAL) ---
-        unit_price = float(addon['price_setup'])
+        # --- VALOR REAL (COMENTADO) ---
+        # unit_price = float(addon['price_setup'])
+
+        # --- VALOR DE TESTE (ATIVO) ---
+        unit_price = 1.00
 
         preference_data = {
             "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -705,8 +708,11 @@ def pay_monthly():
         if not invoice:
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
-        # --- VALOR REAL (OFICIAL) ---
-        unit_price = float(invoice['amount'])
+        # --- VALOR REAL (COMENTADO) ---
+        # unit_price = float(invoice['amount'])
+
+        # --- VALOR DE TESTE (ATIVO) ---
+        unit_price = 1.00
 
         # Cria Preferência MP
         preference_data = {
@@ -748,8 +754,11 @@ def pay_annual():
     if total_discounted <= 0:
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
-    # --- VALOR REAL (OFICIAL) ---
-    unit_price = float(f"{total_discounted:.2f}")
+    # --- VALOR REAL (COMENTADO) ---
+    # unit_price = float(f"{total_discounted:.2f}")
+
+    # --- VALOR DE TESTE (ATIVO) ---
+    unit_price = 1.00
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
@@ -1034,8 +1043,11 @@ def signup_checkout():
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
-        # --- VALOR REAL (OFICIAL) ---
-        unit_price = total_setup
+        # --- VALOR REAL (COMENTADO) ---
+        # unit_price = total_setup
+
+        # --- VALOR DE TESTE (ATIVO) ---
+        unit_price = 1.00
         
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": unit_price}],
