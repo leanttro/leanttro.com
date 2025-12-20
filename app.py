@@ -185,21 +185,21 @@ def enviar_email(destinatario, link_recuperacao):
         print(f"❌ Erro ao enviar e-mail: {e}")
         return False
 
-# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES - DIA 10) ---
+# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (DIA 10) ---
 def ensure_future_invoices(client_id):
     """
-    Garante que o cliente tenha as próximas 12 mensalidades geradas no sistema.
-    Regra: Vencimento sempre dia 10 do próximo mês.
+    Garante que o cliente tenha as próximas 12 mensalidades geradas.
+    Vencimento: SEMPRE dia 10 dos meses subsequentes.
     """
     conn = get_db_connection()
     if not conn: return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Pega valor da mensalidade do contrato APROVADO
+        # 1. Pega valor da mensalidade (Último pedido APROVADO ou PENDENTE se for setup inicial para já popular)
         cur.execute("""
             SELECT total_monthly FROM orders 
-            WHERE client_id = %s AND payment_status = 'approved' 
+            WHERE client_id = %s 
             ORDER BY id DESC LIMIT 1
         """, (client_id,))
         order = cur.fetchone()
@@ -209,33 +209,42 @@ def ensure_future_invoices(client_id):
 
         monthly_price = float(order['total_monthly'])
 
-        # 2. Verifica quantas faturas pendentes existem
+        # 2. Verifica quantas faturas PENDENTES (futuras) existem
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
         count_pending = cur.fetchone()['c']
         
-        # Se já tem 12 ou mais, não faz nada
         needed = 12 - count_pending
         
         if needed > 0:
-            # Descobre a data da última fatura para continuar a sequência
+            # Pega a data da última fatura lançada para continuar a sequência
             cur.execute("SELECT due_date FROM invoices WHERE client_id = %s ORDER BY due_date DESC LIMIT 1", (client_id,))
             last_inv = cur.fetchone()
             
-            base_date = date.today()
             if last_inv:
-                base_date = last_inv['due_date']
+                # Se já tem fatura, pega o mês dela
+                last_date = last_inv['due_date']
+                start_month = last_date.month
+                start_year = last_date.year
+            else:
+                # Se não tem nenhuma, começa do mês que vem
+                today = date.today()
+                start_month = today.month
+                start_year = today.year
             
-            # Gera as faturas faltantes
+            # Loop para criar as que faltam
             for i in range(1, needed + 1):
-                # Lógica: Próximo mês, dia 10
-                next_month = base_date.month + i
-                year_offset = (next_month - 1) // 12
-                month = (next_month - 1) % 12 + 1
-                year = base_date.year + year_offset
+                # Calcula próximo mês corretamente virando o ano
+                calc_month = start_month + i
                 
-                due_dt = date(year, month, 10)
+                # Ajuste matemático para ano/mês (ex: mês 13 vira mês 1 do ano seguinte)
+                year_offset = (calc_month - 1) // 12
+                final_month = (calc_month - 1) % 12 + 1
+                final_year = start_year + year_offset
                 
-                # Verifica duplicidade antes de inserir
+                # CRAVA DIA 10
+                due_dt = date(final_year, final_month, 10)
+                
+                # Verifica duplicidade para garantir
                 cur.execute("SELECT id FROM invoices WHERE client_id = %s AND due_date = %s", (client_id, due_dt))
                 if not cur.fetchone():
                     cur.execute("""
@@ -270,6 +279,7 @@ def get_financial_dashboard(client_id):
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Pega todas as pendentes ordenadas por data
         cur.execute("""
             SELECT id, amount, due_date, status 
             FROM invoices 
@@ -292,7 +302,7 @@ def get_financial_dashboard(client_id):
                 "class": "text-white"
             }
             
-            if delta > 3:
+            if delta > 3: # 3 dias de tolerância
                 info["status_global"] = "overdue"
                 info["message"] = "BLOQUEADO (FATURA ATRASADA)"
                 inv_data["status_label"] = "ATRASADO"
@@ -302,12 +312,17 @@ def get_financial_dashboard(client_id):
                 if info["message"] != "BLOQUEADO (FATURA ATRASADA)": info["message"] = "VENCE HOJE"
                 inv_data["status_label"] = "VENCE HOJE"
                 inv_data["class"] = "text-yellow-500 font-bold"
-            
+            else:
+                # Fatura futura (adiantamento)
+                inv_data["status_label"] = "EM ABERTO (FUTURA)"
+                inv_data["class"] = "text-gray-400"
+
             info["invoices"].append(inv_data)
             info["total_pending"] += float(inv['amount'])
 
+        # Calcula totais para o plano anual
         if info["total_pending"] > 0:
-            info["total_annual_discounted"] = info["total_pending"] * 0.90
+            info["total_annual_discounted"] = info["total_pending"] * 0.90 # 10% OFF
             info["annual_savings"] = info["total_pending"] - info["total_annual_discounted"]
 
     except Exception as e:
@@ -587,11 +602,8 @@ def pay_setup():
         
         if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(order['total_setup'])
-        
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(order['total_setup'])
 
         preference_data = {
             "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -628,11 +640,8 @@ def buy_addon():
         new_order_id = cur.fetchone()['id']
         conn.commit()
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(addon['price_setup'])
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(addon['price_setup'])
 
         preference_data = {
             "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -708,11 +717,8 @@ def pay_monthly():
         if not invoice:
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(invoice['amount'])
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(invoice['amount'])
 
         # Cria Preferência MP
         preference_data = {
@@ -754,11 +760,8 @@ def pay_annual():
     if total_discounted <= 0:
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
-    # --- VALOR REAL (COMENTADO) ---
-    # unit_price = float(f"{total_discounted:.2f}")
-
-    # --- VALOR DE TESTE (ATIVO) ---
-    unit_price = 1.00
+    # --- VALOR REAL (OFICIAL) ---
+    unit_price = float(f"{total_discounted:.2f}")
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
@@ -1043,11 +1046,8 @@ def signup_checkout():
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = total_setup
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 1.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = total_setup
         
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": unit_price}],
