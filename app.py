@@ -190,35 +190,41 @@ def ensure_future_invoices(client_id):
     """
     Garante que o cliente tenha as próximas 12 mensalidades geradas.
     Vencimento: SEMPRE dia 10 dos meses subsequentes.
-    CORREÇÃO AGRESSIVA: Busca qualquer pedido e tenta converter o valor, ignorando erros de tipo SQL.
+    CORREÇÃO AGRESSIVA: Busca qualquer pedido ou produto original para achar o preço.
     """
     conn = get_db_connection()
     if not conn: return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Pega TODOS os pedidos recentes do cliente
+        # 1. Pega TODOS os pedidos recentes do cliente e faz JOIN com produtos para fallback
         cur.execute("""
-            SELECT total_monthly FROM orders 
-            WHERE client_id = %s 
-            ORDER BY id DESC
+            SELECT o.total_monthly, p.price_monthly 
+            FROM orders o
+            LEFT JOIN products p ON o.product_id = p.id
+            WHERE o.client_id = %s 
+            ORDER BY o.id DESC
         """, (client_id,))
         orders = cur.fetchall()
         
         monthly_price = 0.0
         
-        # Itera para achar o primeiro pedido com valor válido > 0
+        # Itera para achar o primeiro valor válido
         for o in orders:
-            try:
-                val = float(o['total_monthly'])
-                if val > 0:
-                    monthly_price = val
-                    break
-            except:
-                continue
+            val_order = float(o.get('total_monthly') or 0)
+            val_product = float(o.get('price_monthly') or 0)
+            
+            if val_order > 0:
+                monthly_price = val_order
+                break
+            elif val_product > 0:
+                # Fallback: Se o pedido tá zerado, usa o preço do produto
+                monthly_price = val_product
+                print(f"⚠️ Usando preço de tabela do produto: R$ {monthly_price}")
+                break
         
         if monthly_price <= 0:
-            print(f"⚠️ Cliente {client_id}: Nenhum pedido com mensalidade válida encontrado.")
+            print(f"⚠️ Cliente {client_id}: Nenhum valor de mensalidade encontrado (Order e Product zerados).")
             return
 
         # 2. Verifica quantas faturas PENDENTES (futuras) existem
