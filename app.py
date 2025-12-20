@@ -190,33 +190,32 @@ def ensure_future_invoices(client_id):
     """
     Garante que o cliente tenha as próximas 12 mensalidades geradas.
     Vencimento: SEMPRE dia 10 dos meses subsequentes.
+    CORREÇÃO: Busca apenas pedidos com mensalidade > 0 para evitar pegar setups/addons zerados.
     """
     conn = get_db_connection()
     if not conn: return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Pega valor da mensalidade
+        # 1. Pega valor da mensalidade (Último pedido com mensalidade válida)
         cur.execute("""
             SELECT total_monthly FROM orders 
-            WHERE client_id = %s 
+            WHERE client_id = %s AND total_monthly > 0
             ORDER BY id DESC LIMIT 1
         """, (client_id,))
         order = cur.fetchone()
         
-        # Proteção contra valores nulos ou vazios
+        # Se não tem pedido ou o valor é zero/nulo, para aqui
         if not order:
-            print(f"⚠️ Cliente {client_id}: Nenhum pedido encontrado.")
             return 
-        
+
         try:
             monthly_price = float(order['total_monthly'])
         except (ValueError, TypeError):
-            print(f"⚠️ Cliente {client_id}: Valor mensal inválido ou nulo ({order.get('total_monthly')})")
+            print(f"❌ Erro converter valor: {order.get('total_monthly')}")
             return
 
-        if monthly_price <= 0:
-            return 
+        if monthly_price <= 0: return
 
         # 2. Verifica quantas faturas PENDENTES (futuras) existem
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
@@ -246,7 +245,7 @@ def ensure_future_invoices(client_id):
                 # Calcula próximo mês corretamente virando o ano
                 calc_month = start_month + i
                 
-                # Ajuste matemático para ano/mês
+                # Ajuste matemático para ano/mês (ex: mês 13 vira mês 1 do ano seguinte)
                 year_offset = (calc_month - 1) // 12
                 final_month = (calc_month - 1) % 12 + 1
                 final_year = start_year + year_offset
@@ -263,11 +262,11 @@ def ensure_future_invoices(client_id):
                     """, (client_id, monthly_price, due_dt))
             
             conn.commit()
-            print(f"✅ Geradas {needed} faturas futuras para cliente {client_id}")
+            print(f"✅ Geradas {needed} faturas para cliente {client_id}")
 
     except Exception as e:
         print(f"❌ ERRO CRÍTICO ao gerar faturas: {e}")
-        traceback.print_exc() # Mostra o erro real no console
+        traceback.print_exc() 
         conn.rollback()
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -615,10 +614,11 @@ def pay_setup():
         if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
         # --- VALOR REAL (OFICIAL) ---
-        unit_price = float(order['total_setup'])
+        # unit_price = float(order['total_setup'])
+        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         preference_data = {
-            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -653,10 +653,11 @@ def buy_addon():
         conn.commit()
 
         # --- VALOR REAL (OFICIAL) ---
-        unit_price = float(addon['price_setup'])
+        # unit_price = float(addon['price_setup'])
+        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         preference_data = {
-            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(new_order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -730,11 +731,12 @@ def pay_monthly():
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
         # --- VALOR REAL (OFICIAL) ---
-        unit_price = float(invoice['amount'])
+        # unit_price = float(invoice['amount'])
+        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         # Cria Preferência MP
         preference_data = {
-            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro (TESTE) - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {
                 "name": current_user.name,
                 "email": current_user.email
@@ -773,12 +775,13 @@ def pay_annual():
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
     # --- VALOR REAL (OFICIAL) ---
-    unit_price = float(f"{total_discounted:.2f}")
+    # unit_price = float(f"{total_discounted:.2f}")
+    unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
         "items": [{"id": "ANNUAL", 
-            "title": f"Antecipação Anual Leanttro (10% OFF) - {len(fin['invoices'])} Parcelas", 
+            "title": f"Antecipação Anual Leanttro (TESTE) - {len(fin['invoices'])} Parcelas", 
             "quantity": 1, 
             "currency_id": "BRL", 
             "unit_price": unit_price
@@ -1059,10 +1062,11 @@ def signup_checkout():
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
         # --- VALOR REAL (OFICIAL) ---
-        unit_price = total_setup
+        # unit_price = total_setup
+        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
         
         preference_data = {
-            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": unit_price}],
+            "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id} (TESTE)", "quantity": 1, "unit_price": unit_price}],
             "payer": {"name": client['name'], "email": client['email']},
             "external_reference": str(order_id),
             "back_urls": {
