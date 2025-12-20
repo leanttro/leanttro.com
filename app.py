@@ -55,14 +55,45 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 # --- CONFIGURAÇÃO DB POOL ---
 db_pool = None
-try:
-    if DB_URL:
-        db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DB_URL)
-        print("✅ Pool de Conexões criado com sucesso")
-    else:
-        print("❌ DATABASE_URL não encontrada.")
-except Exception as e:
-    print(f"❌ Erro ao criar Pool: {e}")
+
+# --- FUNÇÃO DE INICIALIZAÇÃO DO BANCO (AUTO-CORREÇÃO) ---
+def init_db():
+    """Garante que a tabela invoices exista, já que ela sumiu do Directus"""
+    global db_pool
+    try:
+        if DB_URL:
+            db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DB_URL)
+            print("✅ Pool de Conexões criado com sucesso")
+            
+            # --- AUTO-FIX: CRIA TABELA INVOICES SE NÃO EXISTIR ---
+            conn = db_pool.getconn()
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id SERIAL PRIMARY KEY,
+                        client_id INTEGER,
+                        amount DECIMAL(10,2) NOT NULL,
+                        due_date DATE NOT NULL,
+                        status VARCHAR(50) DEFAULT 'pending',
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        paid_at TIMESTAMP
+                    );
+                """)
+                conn.commit()
+                print("✅ [SISTEMA] Tabela 'invoices' verificada/criada com sucesso.")
+            except Exception as e:
+                conn.rollback()
+                print(f"❌ Erro ao verificar tabela invoices: {e}")
+            finally:
+                db_pool.putconn(conn)
+        else:
+            print("❌ DATABASE_URL não encontrada.")
+    except Exception as e:
+        print(f"❌ Erro ao criar Pool: {e}")
+
+# INICIA O BANCO IMEDIATAMENTE
+init_db()
 
 # --- CONFIGURAÇÃO GEMINI (AUTO-DETECT) ---
 GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
@@ -91,16 +122,6 @@ if GEMINI_KEY:
         VOCÊ É: Lelis, Consultor Executivo da Leanttro Digital.
         SUA MISSÃO: Fechar contratos de alto valor passando autoridade e segurança técnica.
         TOM: Profissional, Seguro, Educado e Direto. Não use gírias.
-
-        TABELA DE PREÇOS:
-        1. Site Institucional: De R$ 1.200 por R$ 499 (Promoção).
-        2. Loja Virtual: R$ 999.
-        3. Sistemas Custom: A partir de R$ 1.500.
-
-        REGRAS:
-        1. Respostas curtas e objetivas.
-        2. Se perguntarem preço, apresente o valor e pergunte: "Posso verificar a disponibilidade da nossa equipe técnica para iniciar ainda esta semana?"
-        3. Se o cliente tiver dúvidas técnicas, simplifique a explicação focando no benefício (ex: "Isso garante que seu site não saia do ar").
         """
         
         try:
@@ -189,27 +210,39 @@ def enviar_email(destinatario, link_recuperacao):
 def ensure_future_invoices(client_id):
     """
     Garante que o cliente tenha as próximas 12 mensalidades geradas.
-    Vencimento: SEMPRE dia 10 dos meses subsequentes.
-    CORREÇÃO AGRESSIVA: Busca qualquer pedido ou produto original para achar o preço.
+    CORREÇÃO: Busca preço no pedido, depois no produto vinculado, depois num produto padrão.
     """
     conn = get_db_connection()
     if not conn: return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Pega TODOS os pedidos recentes do cliente e faz JOIN com produtos para fallback
+        # 1. Garante que a tabela existe (Redundância de segurança)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER,
+                amount DECIMAL(10,2) NOT NULL,
+                due_date DATE NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT NOW(),
+                paid_at TIMESTAMP
+            );
+        """)
+        
+        monthly_price = 0.0
+        
+        # 2. Busca Preço (Order -> Product)
+        # Nota: Ajustamos o JOIN para ser robusto com tipos diferentes de ID
         cur.execute("""
             SELECT o.total_monthly, p.price_monthly 
             FROM orders o
-            LEFT JOIN products p ON o.product_id = p.id
+            LEFT JOIN products p ON CAST(o.product_id AS VARCHAR) = CAST(p.id AS VARCHAR)
             WHERE o.client_id = %s 
             ORDER BY o.id DESC
         """, (client_id,))
         orders = cur.fetchall()
         
-        monthly_price = 0.0
-        
-        # Itera para achar o primeiro valor válido
         for o in orders:
             val_order = float(o.get('total_monthly') or 0)
             val_product = float(o.get('price_monthly') or 0)
@@ -218,56 +251,52 @@ def ensure_future_invoices(client_id):
                 monthly_price = val_order
                 break
             elif val_product > 0:
-                # Fallback: Se o pedido tá zerado, usa o preço do produto
                 monthly_price = val_product
-                print(f"⚠️ Usando preço de tabela do produto: R$ {monthly_price}")
+                print(f"⚠️ Usando preço do produto vinculado: R$ {monthly_price}")
                 break
         
+        # 3. FALLBACK DE ÚLTIMO CASO: Pega qualquer produto ativo
         if monthly_price <= 0:
-            print(f"⚠️ Cliente {client_id}: Nenhum valor de mensalidade encontrado (Order e Product zerados).")
+            print(f"⚠️ Cliente {client_id}: Preço não encontrado. Buscando padrão...")
+            cur.execute("SELECT price_monthly FROM products WHERE is_active = TRUE AND price_monthly > 0 LIMIT 1")
+            default_prod = cur.fetchone()
+            if default_prod:
+                monthly_price = float(default_prod['price_monthly'])
+
+        if monthly_price <= 0:
+            print(f"❌ IMPOSSÍVEL DEFINIR PREÇO PARA CLIENTE {client_id}")
             return
 
-        # 2. Verifica quantas faturas PENDENTES (futuras) existem
+        # 4. Verifica e cria faturas
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
-        res_count = cur.fetchone()
-        count_pending = res_count['c'] if res_count else 0
+        count_pending = cur.fetchone()['c']
         
         needed = 12 - count_pending
         
         if needed > 0:
-            # Pega a data da última fatura lançada para continuar a sequência
             cur.execute("SELECT due_date FROM invoices WHERE client_id = %s ORDER BY due_date DESC LIMIT 1", (client_id,))
             last_inv = cur.fetchone()
             
             if last_inv:
-                # Se já tem fatura, pega o mês dela
                 last_date = last_inv['due_date']
                 start_month = last_date.month
                 start_year = last_date.year
             else:
-                # Se não tem nenhuma, começa do mês ATUAL para garantir que apareça algo
                 today = date.today()
-                start_month = today.month - 1 # Truque para o loop começar no mês seguinte (que seria o atual no +1)
+                start_month = today.month - 1 
                 start_year = today.year
-                # Se estamos em Janeiro (1), month-1 = 0, lógica abaixo ajusta
                 if start_month == 0:
                     start_month = 12
                     start_year -= 1
             
-            # Loop para criar as que faltam
             for i in range(1, needed + 1):
-                # Calcula próximo mês corretamente virando o ano
                 calc_month = start_month + i
-                
-                # Ajuste matemático para ano/mês
                 year_offset = (calc_month - 1) // 12
                 final_month = (calc_month - 1) % 12 + 1
                 final_year = start_year + year_offset
                 
-                # CRAVA DIA 10
                 due_dt = date(final_year, final_month, 10)
                 
-                # Verifica duplicidade para garantir
                 cur.execute("SELECT id FROM invoices WHERE client_id = %s AND due_date = %s", (client_id, due_dt))
                 if not cur.fetchone():
                     cur.execute("""
@@ -276,11 +305,10 @@ def ensure_future_invoices(client_id):
                     """, (client_id, monthly_price, due_dt))
             
             conn.commit()
-            print(f"✅ Geradas {needed} faturas para cliente {client_id}")
+            print(f"✅ Geradas {needed} faturas de R$ {monthly_price} para cliente {client_id}")
 
     except Exception as e:
-        print(f"❌ ERRO CRÍTICO ao gerar faturas: {e}")
-        traceback.print_exc() 
+        print(f"❌ ERRO CRÍTICO FATURAS: {e}")
         conn.rollback()
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -628,11 +656,11 @@ def pay_setup():
         if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
         # --- VALOR REAL (OFICIAL) ---
-        # unit_price = float(order['total_setup'])
-        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
+        unit_price = float(order['total_setup'])
+        # unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         preference_data = {
-            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -667,11 +695,11 @@ def buy_addon():
         conn.commit()
 
         # --- VALOR REAL (OFICIAL) ---
-        # unit_price = float(addon['price_setup'])
-        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
+        unit_price = float(addon['price_setup'])
+        # unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         preference_data = {
-            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(new_order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -745,12 +773,12 @@ def pay_monthly():
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
         # --- VALOR REAL (OFICIAL) ---
-        # unit_price = float(invoice['amount'])
-        unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
+        unit_price = float(invoice['amount'])
+        # unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         # Cria Preferência MP
         preference_data = {
-            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro (TESTE) - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {
                 "name": current_user.name,
                 "email": current_user.email
@@ -789,13 +817,13 @@ def pay_annual():
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
     # --- VALOR REAL (OFICIAL) ---
-    # unit_price = float(f"{total_discounted:.2f}")
-    unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
+    unit_price = float(f"{total_discounted:.2f}")
+    # unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
         "items": [{"id": "ANNUAL", 
-            "title": f"Antecipação Anual Leanttro (TESTE) - {len(fin['invoices'])} Parcelas", 
+            "title": f"Antecipação Anual Leanttro - {len(fin['invoices'])} Parcelas", 
             "quantity": 1, 
             "currency_id": "BRL", 
             "unit_price": unit_price
