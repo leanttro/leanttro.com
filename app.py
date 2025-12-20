@@ -185,16 +185,23 @@ def enviar_email(destinatario, link_recuperacao):
         print(f"❌ Erro ao enviar e-mail: {e}")
         return False
 
-# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES) ---
+# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES - DIA 10) ---
 def ensure_future_invoices(client_id):
-    """Garante que o cliente tenha as próximas 12 mensalidades geradas no sistema."""
+    """
+    Garante que o cliente tenha as próximas 12 mensalidades geradas no sistema.
+    Regra: Vencimento sempre dia 10 do próximo mês.
+    """
     conn = get_db_connection()
     if not conn: return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Só gera fatura se tiver pedido APROVADO com mensalidade
-        cur.execute("SELECT total_monthly FROM orders WHERE client_id = %s AND payment_status = 'approved' ORDER BY id DESC LIMIT 1", (client_id,))
+        # 1. Pega valor da mensalidade do contrato APROVADO
+        cur.execute("""
+            SELECT total_monthly FROM orders 
+            WHERE client_id = %s AND payment_status = 'approved' 
+            ORDER BY id DESC LIMIT 1
+        """, (client_id,))
         order = cur.fetchone()
         
         if not order or float(order['total_monthly']) <= 0:
@@ -202,27 +209,43 @@ def ensure_future_invoices(client_id):
 
         monthly_price = float(order['total_monthly'])
 
-        cur.execute("SELECT due_date FROM invoices WHERE client_id = %s ORDER BY due_date DESC LIMIT 1", (client_id,))
-        last_inv = cur.fetchone()
-        
-        start_date = date.today()
-        if last_inv:
-            start_date = last_inv['due_date'] + timedelta(days=30)
-        else:
-            start_date = date.today() + timedelta(days=30)
-
+        # 2. Verifica quantas faturas pendentes existem
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
         count_pending = cur.fetchone()['c']
         
+        # Se já tem 12 ou mais, não faz nada
         needed = 12 - count_pending
         
         if needed > 0:
-            for i in range(needed):
-                due_dt = start_date + timedelta(days=(30 * i))
-                cur.execute("""
-                    INSERT INTO invoices (client_id, amount, due_date, status)
-                    VALUES (%s, %s, %s, 'pending')
-                """, (client_id, monthly_price, due_dt))
+            # Descobre a data da última fatura para continuar a sequência
+            cur.execute("SELECT due_date FROM invoices WHERE client_id = %s ORDER BY due_date DESC LIMIT 1", (client_id,))
+            last_inv = cur.fetchone()
+            
+            base_date = date.today()
+            if last_inv:
+                base_date = last_inv['due_date']
+            
+            # Gera as faturas faltantes
+            for i in range(1, needed + 1):
+                # Lógica: Próximo mês, dia 10
+                next_month = base_date.month + i
+                year_offset = (next_month - 1) // 12
+                month = (next_month - 1) % 12 + 1
+                year = base_date.year + year_offset
+                
+                # Se for a primeira fatura e hoje já passou do dia 10, joga pro outro mês
+                # Mas como estamos usando base_date incremental no loop, a lógica acima funciona para a sequência
+                
+                due_dt = date(year, month, 10)
+                
+                # Verifica duplicidade antes de inserir
+                cur.execute("SELECT id FROM invoices WHERE client_id = %s AND due_date = %s", (client_id, due_dt))
+                if not cur.fetchone():
+                    cur.execute("""
+                        INSERT INTO invoices (client_id, amount, due_date, status)
+                        VALUES (%s, %s, %s, 'pending')
+                    """, (client_id, monthly_price, due_dt))
+            
             conn.commit()
 
     except Exception as e:
@@ -242,7 +265,8 @@ def get_financial_dashboard(client_id):
         "message": "EM DIA",
         "invoices": [],
         "total_pending": 0.0,
-        "total_annual_discounted": 0.0
+        "total_annual_discounted": 0.0,
+        "annual_savings": 0.0
     }
     
     if not conn: return info
@@ -287,6 +311,7 @@ def get_financial_dashboard(client_id):
 
         if info["total_pending"] > 0:
             info["total_annual_discounted"] = info["total_pending"] * 0.90
+            info["annual_savings"] = info["total_pending"] - info["total_annual_discounted"]
 
     except Exception as e:
         print(f"Erro Fin Dashboard: {e}")

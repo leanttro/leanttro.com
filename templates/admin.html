@@ -186,6 +186,25 @@
             <h3 class="text-2xl font-black italic uppercase text-white mb-2">CENTRAL FINANCEIRA</h3>
             <p class="text-sm font-mono text-gray-400 mb-6">Gerencie ou adiante suas mensalidades.</p>
             
+            {% if stats.financeiro.total_pending > 0 %}
+            <div class="bg-ln-neon p-6 mb-6 rounded-sm shadow-[0_0_20px_rgba(210,255,0,0.2)]">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="text-black">
+                        <div class="font-black italic text-xl uppercase leading-none">PAGUE O ANO TODO</div>
+                        <div class="font-bold text-xs font-mono uppercase">COM 10% DE DESCONTO IMEDIATO</div>
+                        <div class="text-[10px] font-mono mt-2 opacity-80">Economize R$ {{ "%.2f"|format(stats.financeiro.annual_savings) }}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-black/60 line-through font-mono">De R$ {{ "%.2f"|format(stats.financeiro.total_pending) }}</div>
+                        <div class="text-3xl font-black text-black">R$ {{ "%.2f"|format(stats.financeiro.total_annual_discounted) }}</div>
+                    </div>
+                </div>
+                <button onclick="payAnnual()" class="w-full mt-4 bg-black text-white font-black uppercase italic py-3 hover:bg-white hover:text-black transition-colors border border-black">
+                    PAGAR PACOTE ANUAL (PIX)
+                </button>
+            </div>
+            {% endif %}
+
             <div class="overflow-y-auto flex-grow pr-2 custom-scrollbar space-y-2">
                 {% for inv in stats.financeiro.invoices %}
                 <div class="flex justify-between items-center bg-black border border-white/10 p-4 hover:border-white/30 transition-colors">
@@ -196,7 +215,7 @@
                     <div class="flex items-center gap-4">
                         <div class="font-mono text-white">R$ {{ "%.2f"|format(inv.amount) }}</div>
                         <button onclick="paySingle({{ inv.id }})" class="text-xs border border-white/20 hover:bg-white hover:text-black px-3 py-1 uppercase transition-colors">
-                            {{ 'PAGAR AGORA' if inv.status_label == 'ATRASADO' else 'ADIANTAR PAGAMENTO' }}
+                            {{ 'PAGAR AGORA' if inv.status_label == 'ATRASADO' else 'ADIANTAR' }}
                         </button>
                     </div>
                 </div>
@@ -378,6 +397,19 @@
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ invoice_id: invoiceId })
+                });
+                const data = await res.json();
+                if(res.ok) showPixModal(data.checkout_url);
+                else alert(data.error);
+            } catch(e) { alert("Erro de conexão"); }
+        }
+
+        // 4. Pagar Anual (Novo)
+        async function payAnnual() {
+            try {
+                const res = await fetch('/api/pay_annual', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
                 });
                 const data = await res.json();
                 if(res.ok) showPixModal(data.checkout_url);
