@@ -684,12 +684,11 @@ def pay_setup():
         
         if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
-        # --- VALOR REAL (IGNORADO NO TESTE) ---
-        # unit_price = float(order['total_setup'])
-        unit_price = 1.00 # --- TESTE R$ 1,00 ATIVADO ---
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(order['total_setup'])
 
         preference_data = {
-            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -723,12 +722,11 @@ def buy_addon():
         new_order_id = cur.fetchone()['id']
         conn.commit()
 
-        # --- VALOR REAL (IGNORADO NO TESTE) ---
-        # unit_price = float(addon['price_setup'])
-        unit_price = 1.00 # --- TESTE R$ 1,00 ATIVADO ---
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(addon['price_setup'])
 
         preference_data = {
-            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(new_order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -801,13 +799,12 @@ def pay_monthly():
         if not invoice:
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
-        # --- VALOR REAL (IGNORADO NO TESTE) ---
-        # unit_price = float(invoice['amount'])
-        unit_price = 1.00 # --- TESTE R$ 1,00 ATIVADO ---
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(invoice['amount'])
 
         # Cria Preferência MP
         preference_data = {
-            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro (TESTE) - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {
                 "name": current_user.name,
                 "email": current_user.email
@@ -845,14 +842,13 @@ def pay_annual():
     if total_discounted <= 0:
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
-    # --- VALOR REAL (IGNORADO NO TESTE) ---
-    # unit_price = float(f"{total_discounted:.2f}")
-    unit_price = 1.00 # --- TESTE R$ 1,00 ATIVADO ---
+    # --- VALOR REAL (OFICIAL) ---
+    unit_price = float(f"{total_discounted:.2f}")
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
         "items": [{"id": "ANNUAL", 
-            "title": f"Antecipação Anual Leanttro (TESTE) - {len(fin['invoices'])} Parcelas", 
+            "title": f"Antecipação Anual Leanttro - {len(fin['invoices'])} Parcelas", 
             "quantity": 1, 
             "currency_id": "BRL", 
             "unit_price": unit_price
@@ -1132,9 +1128,8 @@ def signup_checkout():
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
-        # --- VALOR REAL (IGNORADO NO TESTE) ---
-        # unit_price = total_setup
-        unit_price = 1.00 # --- TESTE R$ 1,00 ATIVADO ---
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = total_setup
         
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id} (TESTE)", "quantity": 1, "unit_price": unit_price}],
