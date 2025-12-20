@@ -61,28 +61,20 @@
                 <div class="text-xl font-bold uppercase">10 DIAS ÚTEIS</div>
             </div>
 
-            <div class="bg-[#0a0a0a] border {{ 'border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.2)]' if stats.financeiro.status == 'overdue' else 'border-white/10' }} p-6 transition-colors group relative">
+            <div class="bg-[#0a0a0a] border {{ 'border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.2)]' if stats.financeiro.status_global == 'overdue' else 'border-white/10' }} p-6 transition-colors group relative">
                 <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
                 <div class="font-mono text-xs text-gray-500 mb-1">FINANCEIRO (MENSALIDADE)</div>
                 
-                {% if stats.financeiro.status == 'overdue' %}
+                {% if stats.financeiro.status_global == 'overdue' %}
                     <div class="text-xl font-black uppercase text-red-600 mb-2 animate-pulse">{{ stats.financeiro.message }}</div>
-                    <div class="text-[10px] text-gray-400 font-mono mb-3">EDIÇÃO DO SITE BLOQUEADA.</div>
-                    <button onclick="gerarPixMensalidade({{ stats.financeiro.invoice_id }})" class="w-full bg-red-600 hover:bg-red-700 text-white font-black italic uppercase py-3 px-4 transition-all transform hover:-translate-y-1">
-                        PAGAR AGORA (PIX)
+                    <button onclick="openFinanceModal()" class="w-full bg-red-600 hover:bg-red-700 text-white font-black italic uppercase py-3 px-4 transition-all transform hover:-translate-y-1">
+                        REGULARIZAR AGORA
                     </button>
-
-                {% elif stats.financeiro.status == 'pending' %}
-                    <div class="text-xl font-bold uppercase text-yellow-500 mb-2">{{ stats.financeiro.message }}</div>
-                    <button onclick="gerarPixMensalidade({{ stats.financeiro.invoice_id }})" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black italic uppercase py-3 px-4 transition-all transform hover:-translate-y-1">
-                        FATURA ABERTA - PAGAR
-                    </button>
-
                 {% else %}
-                    <div class="text-xl font-bold uppercase text-green-500">EM DIA</div>
-                    <div class="text-xs text-gray-500 mt-1 font-mono">
-                        {{ stats.financeiro.message }}
-                    </div>
+                    <div class="text-xl font-bold uppercase text-green-500">{{ stats.financeiro.message }}</div>
+                    <button onclick="openFinanceModal()" class="w-full mt-3 bg-white/10 hover:bg-ln-neon hover:text-black border border-white/20 text-white font-bold text-xs uppercase py-2 px-4 transition-all">
+                        VER FATURAS / ADIANTAR
+                    </button>
                 {% endif %}
             </div>
         </div>
@@ -96,7 +88,7 @@
             </h2>
 
             <form id="editBriefingForm" class="space-y-6">
-                {% if stats.financeiro.status == 'overdue' %}
+                {% if stats.financeiro.status_global == 'overdue' %}
                 <div class="bg-red-900/20 border border-red-500 p-4 mb-4 text-center">
                     <i class="fa-solid fa-lock text-red-500 text-2xl mb-2"></i>
                     <p class="text-red-500 font-bold text-sm uppercase">EDIÇÃO BLOQUEADA POR PENDÊNCIA FINANCEIRA</p>
@@ -108,29 +100,29 @@
                     <div>
                         <label class="block font-mono text-xs text-gray-400 mb-2">CORES PREFERIDAS</label>
                         <input type="text" id="b_colors" value="{{ stats.briefing_data.colors }}" 
-                               {{ 'disabled' if stats.financeiro.status == 'overdue' else '' }}
+                               {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                                class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                     </div>
                     <div>
                         <label class="block font-mono text-xs text-gray-400 mb-2">ESTILO VISUAL</label>
                         <input type="text" id="b_style" value="{{ stats.briefing_data.style }}" 
-                               {{ 'disabled' if stats.financeiro.status == 'overdue' else '' }}
+                               {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                                class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                     </div>
                 </div>
                 <div>
                     <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES DO SITE</label>
                     <textarea id="b_sections" rows="3"
-                              {{ 'disabled' if stats.financeiro.status == 'overdue' else '' }}
+                              {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                               class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none font-mono text-sm disabled:opacity-50 disabled:cursor-not-allowed">{{ stats.briefing_data.sections }}</textarea>
                 </div>
 
                 <div class="flex justify-end items-center gap-4 pt-4 border-t border-white/5">
                     <span id="saveStatus" class="text-xs font-mono text-gray-500"></span>
                     <button type="button" onclick="updateBriefing()" id="btnUpdate"
-                            {{ 'disabled' if stats.financeiro.status == 'overdue' else '' }}
+                            {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                             class="bg-white text-black px-6 py-2 font-bold uppercase hover:bg-ln-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        {{ 'BLOQUEADO' if stats.financeiro.status == 'overdue' else 'SALVAR ALTERAÇÕES' }}
+                        {{ 'BLOQUEADO' if stats.financeiro.status_global == 'overdue' else 'SALVAR ALTERAÇÕES' }}
                     </button>
                 </div>
             </form>
@@ -145,64 +137,89 @@
             </a>
             
             <button id="btnContract" onclick="downloadContract(this)" class="flex items-center justify-between p-6 bg-ln-carbon border border-white/5 hover:bg-white hover:text-black transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-wait disabled:hover:bg-ln-carbon disabled:hover:text-white">
-                <span class="font-bold italic text-lg">VER CONTRATO</span>
+                <span class="font-bold italic text-lg">BAIXAR CONTRATO ASSINADO</span>
                 <i class="fa-solid fa-file-pdf group-hover:scale-110 transition-transform"></i>
             </button>
         </div>
 
     </div>
 
-    <div id="pixModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
-        <div class="bg-ln-carbon border border-white/20 max-w-md w-full p-8 relative shadow-2xl">
-            <button onclick="document.getElementById('pixModal').classList.add('hidden')" class="absolute top-4 right-4 text-gray-500 hover:text-white">
+    <div id="financeModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+        <div class="bg-ln-carbon border border-white/20 max-w-2xl w-full p-8 relative shadow-2xl flex flex-col max-h-[90vh]">
+            <button onclick="closeFinanceModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white">
                 <i class="fa-solid fa-xmark text-xl"></i>
             </button>
-            
-            <div class="text-center">
-                <div class="w-16 h-16 bg-ln-neon text-black rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-                    <i class="fa-brands fa-pix"></i>
-                </div>
-                <h3 class="text-2xl font-black italic uppercase text-white mb-2">PAGAR MENSALIDADE</h3>
-                <p class="text-sm font-mono text-gray-400 mb-6">Escaneie ou copie o código abaixo para liberar seu acesso imediatamente.</p>
-                
-                <div class="bg-white p-2 mb-4 mx-auto w-48 h-48 flex items-center justify-center">
-                    <i class="fa-solid fa-qrcode text-6xl text-black"></i>
-                </div>
 
-                <div class="bg-black border border-white/10 p-3 rounded mb-4 flex items-center gap-2">
-                    <input type="text" id="pixCodeInput" readonly class="bg-transparent text-xs text-gray-400 w-full font-mono focus:outline-none" value="Carregando Pix...">
-                    <button onclick="copyPix()" class="text-ln-neon hover:text-white"><i class="fa-regular fa-copy"></i></button>
+            <h3 class="text-2xl font-black italic uppercase text-white mb-2">CENTRAL FINANCEIRA</h3>
+            <p class="text-sm font-mono text-gray-400 mb-6">Gerencie suas mensalidades ou adiante pagamentos com desconto.</p>
+            
+            {% if stats.financeiro.total_pending > 0 %}
+            <div class="bg-ln-neon/10 border border-ln-neon p-4 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <div class="font-bold italic text-ln-neon text-lg">QUITAR TUDO (10% OFF)</div>
+                    <div class="text-xs text-gray-400 font-mono">Pagar todas as {{ stats.financeiro.invoices|length }} faturas pendentes de uma vez.</div>
                 </div>
+                <div class="text-right">
+                    <div class="text-xs text-gray-500 line-through">De R$ {{ "%.2f"|format(stats.financeiro.total_pending) }}</div>
+                    <div class="text-2xl font-black text-white">R$ {{ "%.2f"|format(stats.financeiro.total_annual_discounted) }}</div>
+                </div>
+                <button onclick="payAnnual()" class="bg-ln-neon text-black font-black uppercase italic px-6 py-3 hover:bg-white transition-colors">
+                    PAGAR COM PIX
+                </button>
+            </div>
+            {% endif %}
+
+            <div class="overflow-y-auto flex-grow pr-2 custom-scrollbar space-y-2">
+                {% for inv in stats.financeiro.invoices %}
+                <div class="flex justify-between items-center bg-black border border-white/10 p-4 hover:border-white/30 transition-colors">
+                    <div>
+                        <div class="text-sm font-bold text-gray-300">Vencimento: {{ inv.date_fmt }}</div>
+                        <div class="text-[10px] font-mono {{ inv.class }} uppercase">{{ inv.status_label }}</div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="font-mono text-white">R$ {{ "%.2f"|format(inv.amount) }}</div>
+                        <button onclick="paySingle({{ inv.id }})" class="text-xs border border-white/20 hover:bg-white hover:text-black px-3 py-1 uppercase transition-colors">
+                            PAGAR
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
                 
-                <a href="" id="checkoutLink" target="_blank" class="block w-full bg-ln-neon text-black font-bold uppercase py-3 text-sm hover:bg-white transition-colors">
-                    ABRIR NO MERCADO PAGO
-                </a>
+                {% if stats.financeiro.invoices|length == 0 %}
+                <div class="text-center text-gray-500 py-8 font-mono">Nenhuma fatura pendente. Você está em dia! 🎉</div>
+                {% endif %}
             </div>
         </div>
     </div>
 
+    <div id="pixModal" class="fixed inset-0 z-[110] hidden items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+        <div class="bg-ln-carbon border border-ln-neon max-w-sm w-full p-8 text-center relative">
+            <button onclick="document.getElementById('pixModal').classList.add('hidden')" class="absolute top-2 right-2 text-gray-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            <div class="w-12 h-12 bg-ln-neon text-black rounded-full flex items-center justify-center mx-auto mb-4 text-2xl"><i class="fa-brands fa-pix"></i></div>
+            <h3 class="text-xl font-black italic uppercase text-white mb-4">CONFIRMAR PAGAMENTO</h3>
+            <a href="" id="checkoutLink" target="_blank" class="block w-full bg-ln-neon text-black font-bold uppercase py-4 hover:bg-white transition-colors animate-pulse">
+                ABRIR APP DO BANCO
+            </a>
+            <p class="text-xs text-gray-500 mt-4 font-mono">O pagamento será processado via Mercado Pago.</p>
+        </div>
+    </div>
+
     <script>
-        // Lógica de edição do Briefing
+        // Lógica de edição do Briefing (Mantida)
         const revisoesRestantes = {{ stats.revisoes if stats.revisoes is not none else 3 }};
         const btnUpdate = document.getElementById('btnUpdate');
         const statusSpan = document.getElementById('saveStatus');
 
-        // Se não tiver revisões ou estiver bloqueado (verificado no backend também)
-        if (revisoesRestantes <= 0) {
-            if(btnUpdate && btnUpdate.innerText !== 'BLOQUEADO') {
-                btnUpdate.disabled = true;
-                btnUpdate.innerText = "LIMITE DE ALTERAÇÕES ATINGIDO";
-                const fields = ['b_colors', 'b_style', 'b_sections'];
-                fields.forEach(id => {
-                    const el = document.getElementById(id);
-                    if(el) el.disabled = true;
-                });
-            }
+        if (revisoesRestantes <= 0 && btnUpdate && btnUpdate.innerText !== 'BLOQUEADO') {
+            btnUpdate.disabled = true;
+            btnUpdate.innerText = "LIMITE DE ALTERAÇÕES ATINGIDO";
+            ['b_colors', 'b_style', 'b_sections'].forEach(id => {
+                const el = document.getElementById(id); if(el) el.disabled = true;
+            });
         }
 
         async function updateBriefing() {
             if (revisoesRestantes <= 0 || btnUpdate.disabled) return;
-
             const colors = document.getElementById('b_colors').value;
             const style = document.getElementById('b_style').value;
             const sections = document.getElementById('b_sections').value;
@@ -216,105 +233,76 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ colors, style, sections })
                 });
-
                 const data = await response.json();
-
                 if (response.ok) {
-                    statusSpan.innerText = "ALTERAÇÃO SALVA COM SUCESSO!";
+                    statusSpan.innerText = "ALTERAÇÃO SALVA!";
                     statusSpan.className = "text-xs font-mono text-ln-neon";
-                    
                     document.getElementById('revisoesDisplay').innerHTML = `${data.revisoes_restantes} <span class="text-sm font-normal text-gray-500">/ 3</span>`;
-                    
-                    if (data.revisoes_restantes <= 0) {
-                        setTimeout(() => window.location.reload(), 1500);
-                    } else {
-                        btnUpdate.innerText = "SALVAR ALTERAÇÕES";
-                        btnUpdate.disabled = false;
-                    }
+                    if (data.revisoes_restantes <= 0) setTimeout(() => window.location.reload(), 1500);
+                    else { btnUpdate.innerText = "SALVAR ALTERAÇÕES"; btnUpdate.disabled = false; }
                 } else {
-                    statusSpan.innerText = "ERRO: " + (data.error || "Erro desconhecido");
+                    statusSpan.innerText = "ERRO: " + (data.error || "Erro");
                     statusSpan.className = "text-xs font-mono text-red-500";
-                    btnUpdate.innerText = "TENTAR NOVAMENTE";
                     btnUpdate.disabled = false;
                 }
-            } catch (error) {
-                statusSpan.innerText = "ERRO DE CONEXÃO";
-                btnUpdate.disabled = false;
-            }
+            } catch (error) { btnUpdate.disabled = false; }
         }
 
-        // Função para Gerar Pagamento Mensal
-        async function gerarPixMensalidade(invoiceId) {
-            const btn = event.target;
-            const originalText = btn.innerText;
-            btn.innerText = "GERANDO...";
-            btn.disabled = true;
+        // FUNÇÕES DO MODAL FINANCEIRO
+        function openFinanceModal() {
+            document.getElementById('financeModal').classList.remove('hidden');
+            document.getElementById('financeModal').classList.add('flex');
+        }
+        function closeFinanceModal() {
+            document.getElementById('financeModal').classList.add('hidden');
+            document.getElementById('financeModal').classList.remove('flex');
+        }
 
+        function showPixModal(url) {
+            const modal = document.getElementById('pixModal');
+            const link = document.getElementById('checkoutLink');
+            link.href = url;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        async function paySingle(invoiceId) {
             try {
-                const response = await fetch('/api/pay_monthly', {
+                const res = await fetch('/api/pay_monthly', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ invoice_id: invoiceId })
                 });
-                const data = await response.json();
-
-                if(response.ok) {
-                    // Abre Modal
-                    const modal = document.getElementById('pixModal');
-                    const input = document.getElementById('pixCodeInput');
-                    const link = document.getElementById('checkoutLink');
-
-                    // Como estamos usando init_point do SDK básico, não temos o copy paste direto aqui
-                    // Vamos colocar o link no input para o usuário ver que funcionou
-                    input.value = "Clique no botão abaixo para pagar"; 
-                    link.href = data.checkout_url;
-                    
-                    modal.classList.remove('hidden');
-                    modal.classList.add('flex');
-                } else {
-                    alert("Erro ao gerar pagamento: " + data.error);
-                }
-            } catch(e) {
-                alert("Erro de conexão.");
-            } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
-            }
+                const data = await res.json();
+                if(res.ok) showPixModal(data.checkout_url);
+                else alert("Erro: " + data.error);
+            } catch(e) { alert("Erro de conexão"); }
         }
 
-        function copyPix() {
-            const copyText = document.getElementById("pixCodeInput");
-            copyText.select();
-            document.execCommand("copy");
-            alert("Código copiado! (Obs: Para esta versão, use o botão 'Abrir no Mercado Pago')");
+        async function payAnnual() {
+            try {
+                const res = await fetch('/api/pay_annual', { method: 'POST' });
+                const data = await res.json();
+                if(res.ok) showPixModal(data.checkout_url);
+                else alert("Erro: " + data.error);
+            } catch(e) { alert("Erro de conexão"); }
         }
 
         async function downloadContract(btn) {
             const textSpan = btn.querySelector('span');
             const originalText = textSpan.innerText;
-            
             try {
                 textSpan.innerText = "GERANDO PDF...";
                 btn.disabled = true;
-
                 const response = await fetch('/api/contract/download');
                 if (!response.ok) throw new Error('Falha no download');
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = "Contrato_Leanttro.pdf";
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-            } catch (error) {
-                console.error(error);
-                alert("Não foi possível baixar o contrato.");
-            } finally {
-                textSpan.innerText = originalText;
-                btn.disabled = false;
-            }
+                a.href = url; a.download = "Contrato_Leanttro.pdf";
+                document.body.appendChild(a); a.click(); a.remove();
+            } catch (error) { alert("Erro ao baixar."); }
+            finally { textSpan.innerText = originalText; btn.disabled = false; }
         }
     </script>
 </body>

@@ -38,6 +38,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
+COMPANY_CNPJ = "63.556.406/0001-75" # CNPJ adicionado
 
 # --- CONFIGURAÇÃO DB POOL (ADICIONADO) ---
 db_pool = None
@@ -130,63 +131,126 @@ def get_db_connection():
         print(f"❌ Erro de Conexão DB: {e}")
         return None
 
-# --- NOVA FUNÇÃO: VERIFICAR STATUS FINANCEIRO ---
-def get_financial_status(client_id):
-    """
-    Retorna o status financeiro do cliente.
-    Status possíveis: 'ok', 'pending' (vencendo hoje/recente), 'overdue' (atrasado > 3 dias)
-    """
+# --- NOVA FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES) ---
+def ensure_future_invoices(client_id):
+    """Garante que o cliente tenha as próximas 12 mensalidades geradas no sistema."""
     conn = get_db_connection()
-    status_info = {
-        "status": "ok", 
-        "message": "EM DIA", 
-        "due_date": None, 
-        "amount": 0.0,
-        "invoice_id": None
+    if not conn: return
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # 1. Pega valor da mensalidade do contrato
+        cur.execute("SELECT total_monthly FROM orders WHERE client_id = %s ORDER BY id DESC LIMIT 1", (client_id,))
+        order = cur.fetchone()
+        
+        if not order or float(order['total_monthly']) <= 0:
+            return # Sem mensalidade
+
+        monthly_price = float(order['total_monthly'])
+
+        # 2. Verifica qual a última fatura gerada
+        cur.execute("SELECT due_date FROM invoices WHERE client_id = %s ORDER BY due_date DESC LIMIT 1", (client_id,))
+        last_inv = cur.fetchone()
+        
+        start_date = date.today()
+        if last_inv:
+            # Começa no mês seguinte à última fatura
+            start_date = last_inv['due_date'] + timedelta(days=30)
+        else:
+            # Se nunca teve fatura, começa daqui 30 dias (pós setup)
+            start_date = date.today() + timedelta(days=30)
+
+        # 3. Conta quantas faturas pendentes existem hoje
+        cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
+        count_pending = cur.fetchone()['c']
+        
+        # Queremos ter sempre 12 faturas lançadas no futuro
+        needed = 12 - count_pending
+        
+        if needed > 0:
+            for i in range(needed):
+                # Cálculo simples (+30 dias por iteração para simular mês)
+                due_dt = start_date + timedelta(days=(30 * i))
+                cur.execute("""
+                    INSERT INTO invoices (client_id, amount, due_date, status)
+                    VALUES (%s, %s, %s, 'pending')
+                """, (client_id, monthly_price, due_dt))
+            conn.commit()
+
+    except Exception as e:
+        print(f"Erro ao gerar faturas: {e}")
+        conn.rollback()
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+
+# --- NOVA FUNÇÃO: DASHBOARD FINANCEIRO COMPLETO ---
+def get_financial_dashboard(client_id):
+    ensure_future_invoices(client_id) # Garante que existem dados
+    
+    conn = get_db_connection()
+    info = {
+        "status_global": "ok", # ok, warning (hoje), overdue (atrasado)
+        "message": "EM DIA",
+        "invoices": [],
+        "total_pending": 0.0,
+        "total_annual_discounted": 0.0
     }
     
-    if not conn: return status_info
+    if not conn: return info
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Busca faturas pendentes ordenadas por vencimento
+        # Busca TODAS as pendentes (não só a primeira)
         cur.execute("""
             SELECT id, amount, due_date, status 
             FROM invoices 
             WHERE client_id = %s AND status = 'pending' 
-            ORDER BY due_date ASC LIMIT 1
+            ORDER BY due_date ASC
         """, (client_id,))
-        invoice = cur.fetchone()
+        raw_invoices = cur.fetchall()
         
-        if invoice:
-            today = date.today()
-            due_date = invoice['due_date']
+        today = date.today()
+        
+        for inv in raw_invoices:
+            due = inv['due_date']
+            delta = (today - due).days
             
-            status_info["amount"] = float(invoice['amount'])
-            status_info["due_date"] = due_date.strftime('%d/%m/%Y')
-            status_info["invoice_id"] = invoice['id']
+            # Formata para o Front
+            inv_data = {
+                "id": inv['id'],
+                "amount": float(inv['amount']),
+                "date_fmt": due.strftime('%d/%m/%Y'),
+                "status_label": "A VENCER",
+                "class": "text-white"
+            }
             
-            delta_days = (today - due_date).days
+            # Lógica de status global (se tiver UMA atrasada, bloqueia tudo)
+            if delta > 3:
+                info["status_global"] = "overdue"
+                info["message"] = "BLOQUEADO (FATURA ATRASADA)"
+                inv_data["status_label"] = "ATRASADO"
+                inv_data["class"] = "text-red-500 font-bold"
+            elif delta >= 0:
+                if info["status_global"] != "overdue": info["status_global"] = "warning"
+                if info["message"] != "BLOQUEADO (FATURA ATRASADA)": info["message"] = "VENCE HOJE"
+                inv_data["status_label"] = "VENCE HOJE"
+                inv_data["class"] = "text-yellow-500 font-bold"
             
-            if delta_days > 3:
-                status_info["status"] = "overdue"
-                status_info["message"] = f"ATRASADO ({delta_days} DIAS)"
-            elif delta_days >= 0:
-                status_info["status"] = "pending"
-                status_info["message"] = "VENCE HOJE" if delta_days == 0 else f"VENCEU HÁ {delta_days} DIA(S)"
-            else:
-                # Fatura futura, mas já gerada (ainda OK para o sistema de bloqueio, mas mostramos aviso se quiser)
-                status_info["status"] = "ok" 
-                status_info["message"] = f"PRÓXIMA: {status_info['due_date']}"
+            info["invoices"].append(inv_data)
+            info["total_pending"] += float(inv['amount'])
+
+        # Cálculo do desconto de 10% se pagar tudo
+        if info["total_pending"] > 0:
+            info["total_annual_discounted"] = info["total_pending"] * 0.90
 
     except Exception as e:
-        print(f"Erro Financial Status: {e}")
+        print(f"Erro Fin Dashboard: {e}")
     finally:
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
         
-    return status_info
-
+    return info
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -261,14 +325,14 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
-    # Pega status financeiro
-    fin_status = get_financial_status(current_user.id)
+    # Pega status financeiro COMPLETO (com lista e desconto)
+    fin_dashboard = get_financial_dashboard(current_user.id)
     
     stats = {
         "users": 0, "orders": 0, "revenue": 0.0, 
         "status_projeto": "AGUARDANDO", "revisoes": 3,
         "briefing_data": None,
-        "financeiro": fin_status # Adicionado ao objeto stats
+        "financeiro": fin_dashboard # Injeta o objeto completo
     }
     try:
         if conn:
@@ -353,8 +417,8 @@ def api_login():
 @login_required
 def update_briefing():
     # --- BLOQUEIO FINANCEIRO ---
-    fin_status = get_financial_status(current_user.id)
-    if fin_status['status'] == 'overdue':
+    fin_status = get_financial_dashboard(current_user.id) # Usa a função nova
+    if fin_status['status_global'] == 'overdue':
         return jsonify({"error": "Acesso bloqueado por pendência financeira. Regularize para editar."}), 403
     # ---------------------------
 
@@ -392,7 +456,7 @@ def update_briefing():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVA ROTA: GERAR PIX MENSALIDADE ---
+# --- NOVA ROTA: GERAR PIX MENSALIDADE ÚNICA ---
 @app.route('/api/pay_monthly', methods=['POST'])
 @login_required
 def pay_monthly():
@@ -434,12 +498,6 @@ def pay_monthly():
         # Criação focada em PIX
         pref = mp_sdk.preference().create(preference_data)
         
-        # Como o MP retorna URL de checkout, mas queremos o Copy Paste direto,
-        # idealmente usaríamos a API v1/payments, mas para simplificar com o SDK Preference:
-        # Retornamos o link do checkout que abre o Pix.
-        # OU: Se quiser o copy-paste direto, precisamos criar um pagamento pendente.
-        # Vamos retornar o init_point por enquanto, que é mais seguro com o SDK básico.
-        
         return jsonify({
             "checkout_url": pref["response"]["init_point"],
             "invoice_id": invoice_id
@@ -450,6 +508,44 @@ def pay_monthly():
     finally:
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
+
+# --- NOVA ROTA: PAGAMENTO ANUAL (TODOS OS PENDENTES COM DESCONTO) ---
+@app.route('/api/pay_annual', methods=['POST'])
+@login_required
+def pay_annual():
+    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    
+    fin = get_financial_dashboard(current_user.id)
+    total_discounted = fin['total_annual_discounted']
+    
+    if total_discounted <= 0:
+        return jsonify({"error": "Não há débitos pendentes."}), 400
+
+    # Cria Preferência MP com valor cheio (soma com desconto)
+    preference_data = {
+        "items": [{
+            "id": "ANNUAL", 
+            "title": f"Antecipação Anual Leanttro (10% OFF) - {len(fin['invoices'])} Parcelas", 
+            "quantity": 1, 
+            "currency_id": "BRL", 
+            "unit_price": float(f"{total_discounted:.2f}")
+        }],
+        "payer": {
+            "name": current_user.name,
+            "email": current_user.email
+        },
+        "payment_methods": {
+            "excluded_payment_types": [{"id": "credit_card"}],
+            "installments": 1
+        },
+        "external_reference": f"ANNUAL-{current_user.id}" # Referência especial para o Webhook saber que é tudo
+    }
+    
+    try:
+        pref = mp_sdk.preference().create(preference_data)
+        return jsonify({"checkout_url": pref["response"]["init_point"]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/catalog', methods=['GET'])
@@ -515,7 +611,7 @@ def get_cases():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- ROTA DE DOWNLOAD DO CONTRATO (ATUALIZADA) ---
+# --- ROTA DE DOWNLOAD DO CONTRATO (ATUALIZADA COM CNPJ E NF) ---
 @app.route('/api/contract/download', methods=['GET'])
 @login_required
 def download_contract_real():
@@ -550,6 +646,12 @@ def download_contract_real():
         p.setFont("Helvetica-BoldOblique", 24)
         p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
         
+        # --- ADICIONADO CNPJ ---
+        p.setFillColorRGB(1, 1, 1)
+        p.setFont("Helvetica", 10)
+        p.drawString(50, height - 85, f"CNPJ: {COMPANY_CNPJ}")
+        # -----------------------
+
         p.setFillColorRGB(0, 0, 0)
         p.setFont("Helvetica-Bold", 18)
         p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
@@ -572,19 +674,19 @@ def download_contract_real():
         p.drawString(50, y-40, f"Setup: R$ {data['total_setup']:,.2f}")
         p.drawString(50, y-60, f"Mensal: R$ {data['total_monthly']:,.2f}")
         
-        # --- ALTERAÇÃO: CLÁUSULAS CORRIGIDAS (3 REVISÕES) ---
+        # --- ALTERAÇÃO: CLÁUSULAS + NF ---
         y -= 100
         p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULAS GERAIS E ESCOPO")
+        p.drawString(50, y, "CLÁUSULAS GERAIS E NOTA FISCAL")
         p.setFont("Helvetica", 10)
         y -= 20
         p.drawString(50, y, "1. O CONTRATANTE tem direito a 03 (três) rodadas completas de revisão.")
         y -= 15
         p.drawString(50, y, "2. A mensalidade cobre: Hospedagem, Certificado de Segurança (SSL) e Suporte Técnico.")
         y -= 15
-        p.drawString(50, y, "3. O domínio (ex: .com.br) deve ser adquirido pelo cliente. A configuração técnica é gratuita.")
+        p.drawString(50, y, f"3. A Nota Fiscal de Serviço (NFS-e) será emitida pela contratada ({COMPANY_CNPJ})")
         y -= 15
-        p.drawString(50, y, "4. Os prazos de entrega contam apenas após o envio de todo material pelo cliente.")
+        p.drawString(65, y, "automaticamente após a entrega final e aceite do projeto.")
         # -----------------------------------------------------
         
         p.showPage()
@@ -635,7 +737,6 @@ def generate_contract():
         p.drawString(50, y-40, f"Setup: {data.get('total_setup')}")
         p.drawString(50, y-60, f"Mensal: {data.get('total_monthly')}")
         
-        # --- ALTERAÇÃO: CLÁUSULAS CORRIGIDAS (3 REVISÕES) ---
         y -= 100
         p.setFont("Helvetica-Bold", 12)
         p.drawString(50, y, "CLÁUSULAS GERAIS E ESCOPO")
@@ -648,7 +749,6 @@ def generate_contract():
         p.drawString(50, y, "3. O domínio (ex: .com.br) deve ser adquirido pelo cliente. A configuração técnica é gratuita.")
         y -= 15
         p.drawString(50, y, "4. Os prazos de entrega contam apenas após o envio de todo material pelo cliente.")
-        # -----------------------------------------------------
         
         p.showPage()
         p.save()
@@ -751,6 +851,18 @@ def mercadopago_webhook():
                          conn = get_db_connection()
                          cur = conn.cursor()
                          cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = %s", (invoice_id,))
+                         conn.commit()
+                         if db_pool and conn: db_pool.putconn(conn)
+                         elif conn: conn.close()
+                
+                # --- NOVO: PAGAMENTO ANUAL (ANNUAL-CLIENTID) ---
+                elif ref and ref.startswith('ANNUAL-'):
+                    client_id_webhook = ref.split('-')[1]
+                    if status == 'approved':
+                         conn = get_db_connection()
+                         cur = conn.cursor()
+                         # Paga TODAS as faturas pendentes desse cliente
+                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE client_id = %s AND status = 'pending'", (client_id_webhook,))
                          conn.commit()
                          if db_pool and conn: db_pool.putconn(conn)
                          elif conn: conn.close()
