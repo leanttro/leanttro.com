@@ -196,7 +196,7 @@ def ensure_future_invoices(client_id):
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Pega valor da mensalidade (Último pedido APROVADO ou PENDENTE se for setup inicial para já popular)
+        # 1. Pega valor da mensalidade
         cur.execute("""
             SELECT total_monthly FROM orders 
             WHERE client_id = %s 
@@ -204,14 +204,24 @@ def ensure_future_invoices(client_id):
         """, (client_id,))
         order = cur.fetchone()
         
-        if not order or float(order['total_monthly']) <= 0:
+        # Proteção contra valores nulos ou vazios
+        if not order:
+            print(f"⚠️ Cliente {client_id}: Nenhum pedido encontrado.")
             return 
+        
+        try:
+            monthly_price = float(order['total_monthly'])
+        except (ValueError, TypeError):
+            print(f"⚠️ Cliente {client_id}: Valor mensal inválido ou nulo ({order.get('total_monthly')})")
+            return
 
-        monthly_price = float(order['total_monthly'])
+        if monthly_price <= 0:
+            return 
 
         # 2. Verifica quantas faturas PENDENTES (futuras) existem
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
-        count_pending = cur.fetchone()['c']
+        res_count = cur.fetchone()
+        count_pending = res_count['c'] if res_count else 0
         
         needed = 12 - count_pending
         
@@ -236,7 +246,7 @@ def ensure_future_invoices(client_id):
                 # Calcula próximo mês corretamente virando o ano
                 calc_month = start_month + i
                 
-                # Ajuste matemático para ano/mês (ex: mês 13 vira mês 1 do ano seguinte)
+                # Ajuste matemático para ano/mês
                 year_offset = (calc_month - 1) // 12
                 final_month = (calc_month - 1) % 12 + 1
                 final_year = start_year + year_offset
@@ -253,9 +263,11 @@ def ensure_future_invoices(client_id):
                     """, (client_id, monthly_price, due_dt))
             
             conn.commit()
+            print(f"✅ Geradas {needed} faturas futuras para cliente {client_id}")
 
     except Exception as e:
-        print(f"Erro ao gerar faturas: {e}")
+        print(f"❌ ERRO CRÍTICO ao gerar faturas: {e}")
+        traceback.print_exc() # Mostra o erro real no console
         conn.rollback()
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -1222,30 +1234,28 @@ def briefing_chat():
 @app.route('/fix-db')
 def fix_db():
     conn = get_db_connection()
+    if not conn: return "Erro ao conectar no banco"
     try:
         cur = conn.cursor()
-        # Garante coluna de revisões
-        cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
-        # Garante coluna de documento (CPF/CNPJ)
-        cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
         
-        # --- TABELA DE FATURAS (INVOICES) ---
+        # 1. Tabela Invoices
         cur.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
                 id SERIAL PRIMARY KEY,
                 client_id INTEGER REFERENCES clients(id),
                 amount DECIMAL(10,2) NOT NULL,
                 due_date DATE NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending', -- pending, paid, overdue
+                status VARCHAR(20) DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT NOW(),
                 paid_at TIMESTAMP
             );
         """)
-
-        # --- CORREÇÃO: TABELA ADDONS (SEM INSERT PARA NÃO DUPLICAR) ---
+        
+        # 2. Tabela Addons
         cur.execute("""
             CREATE TABLE IF NOT EXISTS addons (
                 id SERIAL PRIMARY KEY,
+                product_id INTEGER,
                 name VARCHAR(100) NOT NULL,
                 description TEXT,
                 price_setup DECIMAL(10,2) NOT NULL,
@@ -1254,11 +1264,16 @@ def fix_db():
                 prazo_addons INTEGER DEFAULT 2
             );
         """)
-        
+
+        # 3. Garante colunas legacy
+        cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
+        cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
+
         conn.commit()
-        return "Banco Verificado com Sucesso (Tabelas invoices e addons)"
+        return "✅ Banco Atualizado com Sucesso! Tabelas 'invoices' e 'addons' verificadas."
     except Exception as e:
-        return f"Erro ao atualizar DB: {e}"
+        conn.rollback()
+        return f"❌ Erro ao atualizar DB: {e}"
     finally:
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
