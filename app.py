@@ -206,11 +206,12 @@ def enviar_email(destinatario, link_recuperacao):
         print(f"❌ Erro ao enviar e-mail: {e}")
         return False
 
-# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (DIA 10) ---
+# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (DIA 10 + 30 DIAS GRÁTIS) ---
 def ensure_future_invoices(client_id):
     """
     Garante que o cliente tenha as próximas 12 mensalidades geradas.
-    CORREÇÃO: Busca preço no pedido, depois no produto vinculado, depois num produto padrão.
+    CORREÇÃO: Busca preço no pedido/produto.
+    REGRA: Primeiro vencimento = Data Compra + 30 dias (Mínimo) -> Ajustado para próximo dia 10.
     """
     conn = get_db_connection()
     if not conn: return
@@ -233,19 +234,24 @@ def ensure_future_invoices(client_id):
         monthly_price = 0.0
         
         # 2. Busca Preço (Order -> Product)
-        # Nota: Ajustamos o JOIN para ser robusto com tipos diferentes de ID
         cur.execute("""
-            SELECT o.total_monthly, p.price_monthly 
+            SELECT o.total_monthly, p.price_monthly, o.created_at as order_date 
             FROM orders o
             LEFT JOIN products p ON CAST(o.product_id AS VARCHAR) = CAST(p.id AS VARCHAR)
             WHERE o.client_id = %s 
-            ORDER BY o.id DESC
+            ORDER BY o.id ASC
         """, (client_id,))
         orders = cur.fetchall()
+        
+        first_order_date = date.today() # Fallback padrão
         
         for o in orders:
             val_order = float(o.get('total_monthly') or 0)
             val_product = float(o.get('price_monthly') or 0)
+            
+            # Pega a data da primeira compra válida
+            if o.get('order_date'):
+                first_order_date = o['order_date'].date()
             
             if val_order > 0:
                 monthly_price = val_order
@@ -278,13 +284,36 @@ def ensure_future_invoices(client_id):
             last_inv = cur.fetchone()
             
             if last_inv:
+                # Se já tem fatura, continua a sequência normalmente
                 last_date = last_inv['due_date']
                 start_month = last_date.month
                 start_year = last_date.year
             else:
-                today = date.today()
-                start_month = today.month - 1 
-                start_year = today.year
+                # --- LÓGICA DE 1 MÊS GRÁTIS ---
+                # Data base = Data da compra
+                # Período grátis = 30 dias
+                free_until = first_order_date + timedelta(days=30)
+                
+                # O vencimento deve ser o próximo dia 10 APÓS o período grátis
+                # Ex: Comprou 01/Jan -> Grátis até 31/Jan -> Vence 10/Fev
+                # Ex: Comprou 20/Jan -> Grátis até 19/Fev -> Vence 10/Mar
+                
+                # Tentativa inicial: dia 10 do mês onde cai o fim do período grátis
+                target_due_date = date(free_until.year, free_until.month, 10)
+                
+                # Se o dia 10 desse mês já passou (ou é antes do fim do período grátis), pula para o próximo mês
+                if target_due_date < free_until:
+                    if target_due_date.month == 12:
+                        target_due_date = date(target_due_date.year + 1, 1, 10)
+                    else:
+                        target_due_date = date(target_due_date.year, target_due_date.month + 1, 10)
+                
+                # Ajusta variáveis para o loop gerar a partir dessa data
+                # O loop faz: calc_month = start_month + i (onde i começa em 1)
+                # Então start_month deve ser o mês ANTERIOR ao target_due_date
+                start_month = target_due_date.month - 1
+                start_year = target_due_date.year
+                
                 if start_month == 0:
                     start_month = 12
                     start_year -= 1
@@ -305,7 +334,7 @@ def ensure_future_invoices(client_id):
                     """, (client_id, monthly_price, due_dt))
             
             conn.commit()
-            print(f"✅ Geradas {needed} faturas de R$ {monthly_price} para cliente {client_id}")
+            print(f"✅ Geradas {needed} faturas de R$ {monthly_price} para cliente {client_id} (Início: {start_month+1}/{start_year})")
 
     except Exception as e:
         print(f"❌ ERRO CRÍTICO FATURAS: {e}")
@@ -660,7 +689,7 @@ def pay_setup():
         # unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         preference_data = {
-            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -699,7 +728,7 @@ def buy_addon():
         # unit_price = 1.00 # --- TESTE REAL: FORCEI R$ 1,00 ---
 
         preference_data = {
-            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']} (TESTE)", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
             "external_reference": str(new_order_id),
             "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1}
@@ -778,10 +807,9 @@ def pay_monthly():
 
         # Cria Preferência MP
         preference_data = {
-            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
+            "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro (TESTE) - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {
-                "name": current_user.name,
-                "email": current_user.email
+                "name": current_user.name, "email": current_user.email
             },
             "payment_methods": {
                 "excluded_payment_types": [{"id": "credit_card"}],
@@ -823,7 +851,7 @@ def pay_annual():
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
         "items": [{"id": "ANNUAL", 
-            "title": f"Antecipação Anual Leanttro - {len(fin['invoices'])} Parcelas", 
+            "title": f"Antecipação Anual Leanttro (TESTE) - {len(fin['invoices'])} Parcelas", 
             "quantity": 1, 
             "currency_id": "BRL", 
             "unit_price": unit_price
