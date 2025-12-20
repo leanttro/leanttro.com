@@ -6,6 +6,7 @@
     <title>LEANTTRO | ACESSO RESTRITO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&family=Kanit:ital,wght@0,600;1,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <script>
         tailwind.config = {
@@ -18,12 +19,12 @@
         }
     </script>
 </head>
-<body class="bg-ln-black text-white h-screen flex items-center justify-center overflow-hidden selection:bg-ln-neon selection:text-black">
+<body class="bg-ln-black text-white h-screen flex items-center justify-center overflow-hidden selection:bg-ln-neon selection:text-black relative">
     
     <div class="absolute inset-0 bg-[linear-gradient(to_right,#1a1a1a_1px,transparent_1px),linear-gradient(to_bottom,#1a1a1a_1px,transparent_1px)] bg-[size:40px_40px] opacity-30 z-0"></div>
     <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-ln-neon/10 rounded-full blur-[120px]"></div>
 
-    <div class="relative z-10 w-full max-w-md p-8 bg-ln-carbon border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+    <div id="loginCard" class="relative z-10 w-full max-w-md p-8 bg-ln-carbon border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
         
         <div class="text-center mb-10">
             <h1 class="text-4xl font-black italic tracking-tighter mb-2">
@@ -54,16 +55,60 @@
         </form>
 
         <div class="mt-8 text-center border-t border-white/5 pt-6">
-            <a href="https://wa.me/" class="font-mono text-xs text-gray-500 hover:text-white transition-colors">
-                ESQUECEU A SENHA? FALE COM O SUPORTE
-            </a>
+            <button onclick="showRecoverModal()" class="font-mono text-xs text-gray-500 hover:text-white transition-colors uppercase">
+                ESQUECEU A SENHA? RECUPERAR AGORA
+            </button>
+        </div>
+    </div>
+
+    <div id="recoverModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+        <div class="bg-ln-carbon border border-white/20 w-full max-w-sm p-8 relative shadow-2xl">
+            <button onclick="document.getElementById('recoverModal').classList.add('hidden')" class="absolute top-4 right-4 text-gray-500 hover:text-white">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <h3 class="text-xl font-black italic uppercase text-white mb-4">RECUPERAR ACESSO</h3>
+            <p class="text-xs text-gray-400 font-mono mb-6">Digite seu e-mail cadastrado. Enviaremos um link seguro para você criar uma nova senha.</p>
+            
+            <form onsubmit="handleRecover(event)">
+                <input type="email" id="recoverEmail" required 
+                       class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none font-mono mb-4 placeholder-gray-700"
+                       placeholder="Seu e-mail aqui">
+                <button type="submit" class="w-full bg-white text-black font-bold uppercase py-3 hover:bg-ln-neon transition-colors">
+                    ENVIAR LINK
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="resetModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+        <div class="bg-ln-carbon border border-ln-neon w-full max-w-sm p-8 relative shadow-[0_0_30px_rgba(210,255,0,0.2)]">
+            <h3 class="text-xl font-black italic uppercase text-white mb-4">NOVA SENHA</h3>
+            <p class="text-xs text-gray-400 font-mono mb-6">Crie uma senha forte para voltar a acessar seu painel.</p>
+            
+            <form onsubmit="handleResetConfirm(event)">
+                <input type="password" id="newPassword" required 
+                       class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none font-mono mb-4 placeholder-gray-700"
+                       placeholder="Nova senha">
+                <button type="submit" class="w-full bg-ln-neon text-black font-bold uppercase py-3 hover:bg-white transition-colors">
+                    ATUALIZAR SENHA
+                </button>
+            </form>
         </div>
     </div>
 
     <script>
+        // 1. Verifica se tem token de reset na URL ao carregar
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('reset_token')) {
+                document.getElementById('loginCard').classList.add('hidden'); // Esconde login
+                document.getElementById('resetModal').classList.remove('hidden'); // Mostra reset
+                document.getElementById('resetModal').classList.add('flex');
+            }
+        });
+
         async function handleLogin(e) {
             e.preventDefault();
-            
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const btn = e.target.querySelector('button');
@@ -79,7 +124,6 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
-
                 const data = await response.json();
 
                 if (response.ok) {
@@ -91,8 +135,73 @@
                     btn.disabled = false;
                 }
             } catch (error) {
-                alert("Erro de conexão com o servidor.");
+                alert("Erro de conexão.");
                 btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function showRecoverModal() {
+            document.getElementById('recoverModal').classList.remove('hidden');
+            document.getElementById('recoverModal').classList.add('flex');
+        }
+
+        async function handleRecover(e) {
+            e.preventDefault();
+            const email = document.getElementById('recoverEmail').value;
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerText;
+            btn.innerText = "ENVIANDO...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/request_reset', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                
+                alert(data.message); // Exibe mensagem de sucesso ou erro fake
+                if(data.status === 'success') {
+                    document.getElementById('recoverModal').classList.add('hidden');
+                }
+            } catch(e) {
+                alert("Erro de conexão.");
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function handleResetConfirm(e) {
+            e.preventDefault();
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('reset_token');
+            const password = document.getElementById('newPassword').value;
+            const btn = e.target.querySelector('button');
+            
+            btn.innerText = "SALVANDO...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/reset_password_confirm', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ token, password })
+                });
+                const data = await res.json();
+
+                if(res.ok) {
+                    alert("Senha atualizada! Faça login agora.");
+                    window.location.href = "/login"; // Limpa a URL e vai pro login limpo
+                } else {
+                    alert("Erro: " + data.message);
+                    btn.innerText = "TENTAR NOVAMENTE";
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                alert("Erro de conexão.");
                 btn.disabled = false;
             }
         }

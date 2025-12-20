@@ -16,6 +16,12 @@ import mercadopago
 from dotenv import load_dotenv
 import traceback
 
+# --- NOVAS IMPORTAÇÕES PARA EMAIL ---
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from itsdangerous import URLSafeTimedSerializer
+
 # Importações para PDF
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -39,6 +45,13 @@ DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
 COMPANY_CNPJ = "63.556.406/0001-75"
+BASE_URL = os.getenv('APP_BASE_URL', 'https://leanttro.com') # Ajuste se necessário
+
+# --- CONFIGURAÇÃO SMTP (EMAIL) ---
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 # --- CONFIGURAÇÃO DB POOL ---
 db_pool = None
@@ -130,6 +143,47 @@ def get_db_connection():
     except Exception as e:
         print(f"❌ Erro de Conexão DB: {e}")
         return None
+
+# --- FUNÇÃO AUXILIAR: ENVIO DE EMAIL ---
+def enviar_email(destinatario, link_recuperacao):
+    """Envia e-mail de recuperação usando SMTP"""
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print("⚠️ SMTP não configurado nas variáveis de ambiente.")
+        return False
+
+    msg = MIMEMultipart()
+    msg['From'] = SMTP_EMAIL
+    msg['To'] = destinatario
+    msg['Subject'] = "Recuperação de Senha - Leanttro"
+
+    html = f"""
+    <html>
+      <body style="font-family: 'Courier New', monospace; background-color: #050505; color: #fff; padding: 20px;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #333; padding: 30px;">
+            <h2 style="color: #D2FF00; font-style: italic;">LEANTTRO.</h2>
+            <p style="color: #ccc;">Olá,</p>
+            <p style="color: #ccc;">Recebemos uma solicitação para redefinir sua senha de acesso.</p>
+            <div style="text-align: center; margin: 40px 0;">
+                <a href="{link_recuperacao}" style="background-color: #D2FF00; color: #000; padding: 15px 30px; text-decoration: none; font-weight: bold; font-style: italic; text-transform: uppercase;">DEFINIR NOVA SENHA</a>
+            </div>
+            <p style="font-size: 12px; color: #666;">Se você não solicitou isso, ignore este e-mail.</p>
+        </div>
+      </body>
+    </html>
+    """
+    msg.attach(MIMEText(html, 'html'))
+
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        server.sendmail(SMTP_EMAIL, destinatario, msg.as_string())
+        server.quit()
+        print(f"✅ E-mail enviado para {destinatario}")
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao enviar e-mail: {e}")
+        return False
 
 # --- FUNÇÃO: GARANTIR FATURAS FUTURAS (12 MESES) ---
 def ensure_future_invoices(client_id):
@@ -422,6 +476,75 @@ def api_login():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
+# --- NOVA ROTA: SOLICITAR RESET DE SENHA (EMAIL) ---
+@app.route('/api/request_reset', methods=['POST'])
+def request_reset():
+    email = request.json.get('email')
+    if not email: return jsonify({"message": "Informe o e-mail"}), 400
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT id, name FROM clients WHERE email = %s", (email,))
+        user_data = cur.fetchone()
+        
+        if not user_data:
+            # Retorna sucesso falso por segurança (para não revelar se o email existe)
+            return jsonify({"status": "success", "message": "Se o e-mail existir, um link foi enviado."})
+
+        # Gera token seguro
+        s = URLSafeTimedSerializer(app.secret_key)
+        token = s.dumps(email, salt='recover-key')
+        
+        # Gera o link (Aponta para login.html)
+        reset_link = f"{BASE_URL}/login?reset_token={token}"
+        
+        # Envia e-mail
+        enviado = enviar_email(email, reset_link)
+        
+        if enviado:
+            return jsonify({"status": "success", "message": "Link de recuperação enviado para seu e-mail."})
+        else:
+            return jsonify({"status": "error", "message": "Erro ao enviar e-mail. Contate o suporte."}), 500
+
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+
+# --- NOVA ROTA: CONFIRMAR RESET DE SENHA ---
+@app.route('/api/reset_password_confirm', methods=['POST'])
+def reset_password_confirm():
+    token = request.json.get('token')
+    new_password = request.json.get('password')
+    
+    if not token or not new_password:
+        return jsonify({"message": "Dados inválidos"}), 400
+
+    s = URLSafeTimedSerializer(app.secret_key)
+    try:
+        email = s.loads(token, salt='recover-key', max_age=3600) # 1 hora de validade
+    except:
+        return jsonify({"message": "Link inválido ou expirado."}), 400
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        
+        hashed = generate_password_hash(new_password)
+        cur.execute("UPDATE clients SET password_hash = %s WHERE email = %s", (hashed, email))
+        conn.commit()
+        
+        if cur.rowcount > 0:
+            return jsonify({"status": "success", "message": "Senha atualizada com sucesso!"})
+        else:
+            return jsonify({"message": "Usuário não encontrado."}), 404
+            
+    except Exception as e:
+        return jsonify({"message": str(e)}), 500
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+
 # --- NOVO: PAGAR SETUP PENDENTE (RECUPERAÇÃO) ---
 @app.route('/api/pay_setup', methods=['POST'])
 @login_required
@@ -437,11 +560,8 @@ def pay_setup():
         
         if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(order['total_setup'])
-        
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 10.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(order['total_setup'])
 
         preference_data = {
             "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -478,11 +598,8 @@ def buy_addon():
         new_order_id = cur.fetchone()['id']
         conn.commit()
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(addon['price_setup'])
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 10.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(addon['price_setup'])
 
         preference_data = {
             "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
@@ -558,11 +675,8 @@ def pay_monthly():
         if not invoice:
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = float(invoice['amount'])
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 10.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = float(invoice['amount'])
 
         # Cria Preferência MP
         preference_data = {
@@ -604,11 +718,8 @@ def pay_annual():
     if total_discounted <= 0:
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
-    # --- VALOR REAL (COMENTADO) ---
-    # unit_price = float(f"{total_discounted:.2f}")
-
-    # --- VALOR DE TESTE (ATIVO) ---
-    unit_price = 10.00
+    # --- VALOR REAL (OFICIAL) ---
+    unit_price = float(f"{total_discounted:.2f}")
 
     # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
@@ -894,11 +1005,8 @@ def signup_checkout():
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
-        # --- VALOR REAL (COMENTADO) ---
-        # unit_price = total_setup
-
-        # --- VALOR DE TESTE (ATIVO) ---
-        unit_price = 10.00
+        # --- VALOR REAL (OFICIAL) ---
+        unit_price = total_setup
         
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id}", "quantity": 1, "unit_price": unit_price}],
