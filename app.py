@@ -190,32 +190,36 @@ def ensure_future_invoices(client_id):
     """
     Garante que o cliente tenha as próximas 12 mensalidades geradas.
     Vencimento: SEMPRE dia 10 dos meses subsequentes.
-    CORREÇÃO: Busca apenas pedidos com mensalidade > 0 para evitar pegar setups/addons zerados.
+    CORREÇÃO AGRESSIVA: Busca qualquer pedido e tenta converter o valor, ignorando erros de tipo SQL.
     """
     conn = get_db_connection()
     if not conn: return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Pega valor da mensalidade (Último pedido com mensalidade válida)
+        # 1. Pega TODOS os pedidos recentes do cliente
         cur.execute("""
             SELECT total_monthly FROM orders 
-            WHERE client_id = %s AND total_monthly > 0
-            ORDER BY id DESC LIMIT 1
+            WHERE client_id = %s 
+            ORDER BY id DESC
         """, (client_id,))
-        order = cur.fetchone()
+        orders = cur.fetchall()
         
-        # Se não tem pedido ou o valor é zero/nulo, para aqui
-        if not order:
-            return 
-
-        try:
-            monthly_price = float(order['total_monthly'])
-        except (ValueError, TypeError):
-            print(f"❌ Erro converter valor: {order.get('total_monthly')}")
+        monthly_price = 0.0
+        
+        # Itera para achar o primeiro pedido com valor válido > 0
+        for o in orders:
+            try:
+                val = float(o['total_monthly'])
+                if val > 0:
+                    monthly_price = val
+                    break
+            except:
+                continue
+        
+        if monthly_price <= 0:
+            print(f"⚠️ Cliente {client_id}: Nenhum pedido com mensalidade válida encontrado.")
             return
-
-        if monthly_price <= 0: return
 
         # 2. Verifica quantas faturas PENDENTES (futuras) existem
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
@@ -235,17 +239,21 @@ def ensure_future_invoices(client_id):
                 start_month = last_date.month
                 start_year = last_date.year
             else:
-                # Se não tem nenhuma, começa do mês que vem
+                # Se não tem nenhuma, começa do mês ATUAL para garantir que apareça algo
                 today = date.today()
-                start_month = today.month
+                start_month = today.month - 1 # Truque para o loop começar no mês seguinte (que seria o atual no +1)
                 start_year = today.year
+                # Se estamos em Janeiro (1), month-1 = 0, lógica abaixo ajusta
+                if start_month == 0:
+                    start_month = 12
+                    start_year -= 1
             
             # Loop para criar as que faltam
             for i in range(1, needed + 1):
                 # Calcula próximo mês corretamente virando o ano
                 calc_month = start_month + i
                 
-                # Ajuste matemático para ano/mês (ex: mês 13 vira mês 1 do ano seguinte)
+                # Ajuste matemático para ano/mês
                 year_offset = (calc_month - 1) // 12
                 final_month = (calc_month - 1) % 12 + 1
                 final_year = start_year + year_offset
