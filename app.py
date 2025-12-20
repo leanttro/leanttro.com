@@ -482,7 +482,7 @@ def pay_monthly():
                 "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}",
                 "quantity": 1,
                 "currency_id": "BRL",
-                "unit_price": float(invoice['amount'])
+                "unit_price": 1.00
             }],
             "payer": {
                 "name": current_user.name,
