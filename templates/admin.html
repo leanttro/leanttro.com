@@ -41,7 +41,7 @@
                 <div>
                     <h2 class="text-2xl font-black italic uppercase text-white leading-none">ATIVAÇÃO PENDENTE</h2>
                     <p class="font-mono text-sm text-gray-400 mt-2 max-w-lg">
-                        Para iniciarmos o desenvolvimento, finalize a ativação.
+                        Seu painel já está liberado para visualização! Para iniciarmos o desenvolvimento dos itens escolhidos (Setup + Addons), finalize a ativação.
                     </p>
                     <div class="mt-2 text-xs font-mono text-ln-neon bg-white/5 inline-block px-2 py-1 rounded border border-white/10">
                         VALOR TOTAL PENDENTE: <span class="font-bold text-lg ml-1">R$ {{ "%.2f"|format(stats.setup_value) }}</span>
@@ -54,52 +54,22 @@
         </div>
         {% endif %}
 
-        {% if stats.briefing_status == 'skipped' %}
-        <div class="bg-yellow-900/20 border border-yellow-500 p-6 mb-10 rounded flex flex-col md:flex-row items-center justify-between gap-6">
-            <div class="flex items-center gap-5">
-                <div class="w-14 h-14 bg-yellow-500 text-black rounded-full flex items-center justify-center text-2xl">
-                    <i class="fa-solid fa-pause"></i>
-                </div>
-                <div>
-                    <h2 class="text-2xl font-black italic uppercase text-white leading-none">PRAZO PAUSADO</h2>
-                    <p class="font-mono text-sm text-gray-400 mt-2 max-w-lg">
-                        O desenvolvimento e a contagem do prazo só iniciam após o preenchimento completo do briefing.
-                    </p>
-                </div>
-            </div>
-            <a href="#editBriefingForm" onclick="document.getElementById('b_colors').focus()" class="w-full md:w-auto bg-yellow-500 text-black px-8 py-4 font-black uppercase italic hover:bg-white transition-all shadow-lg text-center">
-                PREENCHER AGORA
-            </a>
-        </div>
-        {% endif %}
-
         <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
             <div>
                 <div class="font-mono text-xs text-ln-neon mb-2">// STATUS DO PROJETO</div>
                 <h1 class="text-4xl md:text-6xl font-black italic uppercase leading-none text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">
                     {% if stats.pending_setup %}
                         AGUARDANDO PAGAMENTO
-                    {% elif stats.briefing_status == 'skipped' %}
-                        AGUARDANDO BRIEFING
                     {% else %}
-                        {{ stats.status_projeto if stats.status_projeto else 'EM DESENVOLVIMENTO' }}
+                        {{ stats.status_projeto if stats.status_projeto else 'AGUARDANDO MATERIAL' }}
                     {% endif %}
                 </h1>
             </div>
-            
-            <div class="flex gap-4">
-                {% if stats.briefing_data.url_versao %}
-                <a href="{{ stats.briefing_data.url_versao }}" target="_blank" class="bg-ln-neon text-black px-6 py-3 font-bold uppercase italic hover:bg-white transition-all shadow-[0_0_20px_rgba(210,255,0,0.3)] flex items-center gap-2">
-                    <i class="fa-solid fa-eye"></i> VER VERSÃO V1.0
-                </a>
-                {% endif %}
-                
-                <div class="bg-ln-carbon border border-ln-neon/30 px-6 py-3 rounded flex items-center gap-3">
-                    <span class="w-2 h-2 {{ 'bg-red-500' if stats.pending_setup or stats.briefing_status == 'skipped' else 'bg-ln-neon' }} rounded-full animate-pulse"></span>
-                    <span class="font-mono text-sm font-bold text-white">
-                        {{ 'PAUSADO' if stats.pending_setup or stats.briefing_status == 'skipped' else 'ATIVO' }}
-                    </span>
-                </div>
+            <div class="bg-ln-carbon border border-ln-neon/30 px-6 py-3 rounded flex items-center gap-3">
+                <span class="w-2 h-2 {{ 'bg-red-500' if stats.pending_setup else 'bg-ln-neon' }} rounded-full animate-pulse"></span>
+                <span class="font-mono text-sm font-bold text-white">
+                    {{ 'PENDENTE' if stats.pending_setup else 'ATIVO' }}
+                </span>
             </div>
         </div>
 
@@ -116,16 +86,10 @@
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group relative overflow-hidden">
                 <div class="text-gray-500 text-2xl mb-4 group-hover:text-ln-neon"><i class="fa-solid fa-calendar-days"></i></div>
                 <div class="font-mono text-xs text-gray-500 mb-1">PREVISÃO DE ENTREGA</div>
-                
-                {% if stats.briefing_status == 'skipped' %}
-                    <div class="text-xl font-bold uppercase text-yellow-500">PAUSADO</div>
-                    <div class="text-[10px] font-mono text-gray-500 mt-2">Envie o briefing para iniciar.</div>
-                {% else %}
-                    <div class="text-xl font-bold uppercase">10 DIAS ÚTEIS</div>
-                    <div class="text-[10px] font-mono text-ln-neon mt-2 border-t border-white/10 pt-2 font-bold">
-                        * APÓS CONFIRMAÇÃO DO SETUP
-                    </div>
-                {% endif %}
+                <div class="text-xl font-bold uppercase">10 DIAS ÚTEIS</div>
+                <div class="text-[10px] font-mono text-ln-neon mt-2 border-t border-white/10 pt-2 font-bold">
+                    * APÓS CONFIRMAÇÃO DO SETUP
+                </div>
             </div>
 
             <div class="bg-[#0a0a0a] border border-white/10 p-6 hover:border-ln-neon transition-colors group relative overflow-hidden">
@@ -157,10 +121,10 @@
         </div>
 
         {% if stats.briefing_data %}
-        <div class="bg-ln-carbon border border-white/10 p-8 mb-12 relative overflow-hidden" id="briefingSection">
+        <div class="bg-ln-carbon border border-white/10 p-8 mb-12 relative overflow-hidden">
             <div class="absolute top-0 right-0 p-2 bg-white/5 font-mono text-xs text-gray-500">BRIEFING V1.0</div>
             <h2 class="font-mono text-sm text-ln-neon mb-6 uppercase border-b border-white/10 pb-2">
-                // DADOS DO PROJETO (EDITE AQUI)
+                // MEU BRIEFING (VOCÊ PODE EDITAR)
             </h2>
             <form id="editBriefingForm" class="space-y-6">
                 {% if stats.financeiro.status_global == 'overdue' %}
@@ -185,13 +149,10 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES DO SITE / REFERÊNCIAS / INFO GERAL</label>
-                    <textarea id="b_sections" rows="5"
+                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES DO SITE</label>
+                    <textarea id="b_sections" rows="3"
                               {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                               class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">{{ stats.briefing_data.sections }}</textarea>
-                    <p class="text-[10px] text-gray-500 font-mono mt-1">
-                        Use este campo para colar Referências, Textos de Venda e Dados de Contato.
-                    </p>
                 </div>
 
                 <div class="flex justify-end items-center gap-4 pt-4 border-t border-white/5">
@@ -350,8 +311,6 @@
                          btnUpdate.innerText = "SALVAR ALTERAÇÕES";
                          btnUpdate.disabled = false;
                      }
-                     // Recarrega a página para atualizar status se for o caso
-                     if(data.status_changed) window.location.reload();
                  } else {
                      statusSpan.innerText = "ERRO: " + (data.error || "Erro");
                      statusSpan.className = "text-xs font-mono text-red-500";
@@ -379,12 +338,16 @@
             
             if(link) {
                 link.href = url;
+                console.log("Link de checkout definido:", url);
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
                 modal.style.zIndex = "9999"; 
+            } else {
+                console.error("Elemento checkoutLink não encontrado");
             }
         }
 
+        // 1. Pagar Setup Pendente (Tela de Bloqueio)
         async function payPendingSetup(orderId) {
             const btn = event.target;
             const originalText = btn.innerText;
@@ -405,6 +368,7 @@
                     alert("Erro: " + data.error);
                 }
             } catch(e) {
+                console.error(e);
                 alert("Erro de conexão ao tentar pagar.");
             } finally {
                 btn.innerText = originalText;
@@ -412,6 +376,7 @@
             }
         }
 
+        // 2. Comprar Addon (Loja)
         async function buyAddon(addonId) {
             try {
                 const res = await fetch('/api/buy_addon', {
@@ -425,6 +390,7 @@
             } catch(e) { alert("Erro de conexão"); }
         }
 
+        // 3. Pagar Mensalidade (ou Adiantar)
         async function paySingle(invoiceId) {
             try {
                 const res = await fetch('/api/pay_monthly', {
@@ -438,6 +404,7 @@
             } catch(e) { alert("Erro de conexão"); }
         }
 
+        // 4. Pagar Anual (Novo)
         async function payAnnual() {
             try {
                 const res = await fetch('/api/pay_annual', {
