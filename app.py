@@ -1195,7 +1195,9 @@ def signup_checkout():
         addons_ids = cart.get('addon_ids', [])
         addons_json = json.dumps(addons_ids) 
         
-        total_setup = float(cart.get('total_setup') or 0)
+        # --- MODO TESTE: FORÇA O VALOR DE R$ 1.00 PARA O SETUP INICIAL ---
+        # total_setup = float(cart.get('total_setup') or 0) # LINHA ORIGINAL
+        total_setup = 1.00 # VALOR FIXO PARA TESTE
         total_monthly = float(cart.get('total_monthly') or 0)
         
         cur.execute("""
@@ -1209,7 +1211,7 @@ def signup_checkout():
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
-        # --- VALOR REAL (OFICIAL) ---
+        # --- VALOR REAL (OFICIAL) USA O TOTAL_SETUP QUE FOI FORÇADO ---
         unit_price = total_setup
         
         preference_data = {
