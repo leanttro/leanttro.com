@@ -32,7 +32,26 @@
 
     <div class="pt-24 pb-12 px-6 max-w-6xl mx-auto">
         
-        {% if stats.pending_setup %}
+        {% if stats.is_skipped %}
+        <div class="bg-ln-carbon border border-red-500 p-6 mb-10 rounded shadow-[0_0_30px_rgba(255,0,0,0.15)] flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse-slow">
+            <div class="flex items-center gap-5">
+                <div class="w-14 h-14 bg-red-500 text-white rounded-full flex items-center justify-center text-2xl">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-black italic uppercase text-white leading-none">PRAZO PAUSADO</h2>
+                    <p class="font-mono text-sm text-gray-400 mt-2 max-w-lg">
+                        Você optou por pular o briefing. O desenvolvimento só iniciará após o preenchimento das informações técnicas abaixo.
+                    </p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('editBriefingSection').scrollIntoView({behavior: 'smooth'})" class="w-full md:w-auto bg-red-500 text-white px-8 py-4 font-black uppercase italic hover:bg-white hover:text-red-600 transition-all transform hover:-translate-y-1 whitespace-nowrap shadow-lg">
+                PREENCHER AGORA
+            </button>
+        </div>
+        {% endif %}
+
+        {% if stats.pending_setup and not stats.is_skipped %}
         <div class="bg-ln-carbon border border-ln-neon p-6 mb-10 rounded shadow-[0_0_30px_rgba(210,255,0,0.15)] flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse-slow">
             <div class="flex items-center gap-5">
                 <div class="w-14 h-14 bg-ln-neon text-black rounded-full flex items-center justify-center text-2xl">
@@ -41,7 +60,7 @@
                 <div>
                     <h2 class="text-2xl font-black italic uppercase text-white leading-none">ATIVAÇÃO PENDENTE</h2>
                     <p class="font-mono text-sm text-gray-400 mt-2 max-w-lg">
-                        Seu painel já está liberado para visualização! Para iniciarmos o desenvolvimento dos itens escolhidos (Setup + Addons), finalize a ativação.
+                        Seu painel já está liberado para visualização! Finalize o pagamento do Setup para iniciar.
                     </p>
                     <div class="mt-2 text-xs font-mono text-ln-neon bg-white/5 inline-block px-2 py-1 rounded border border-white/10">
                         VALOR TOTAL PENDENTE: <span class="font-bold text-lg ml-1">R$ {{ "%.2f"|format(stats.setup_value) }}</span>
@@ -58,17 +77,28 @@
             <div>
                 <div class="font-mono text-xs text-ln-neon mb-2">// STATUS DO PROJETO</div>
                 <h1 class="text-4xl md:text-6xl font-black italic uppercase leading-none text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500">
-                    {% if stats.pending_setup %}
+                    {% if stats.is_skipped %}
+                        AGUARDANDO BRIEFING
+                    {% elif stats.pending_setup %}
                         AGUARDANDO PAGAMENTO
                     {% else %}
                         {{ stats.status_projeto if stats.status_projeto else 'AGUARDANDO MATERIAL' }}
                     {% endif %}
                 </h1>
+                
+                {% if stats.url_versao %}
+                <div class="mt-4">
+                    <a href="{{ stats.url_versao }}" target="_blank" class="inline-flex items-center gap-2 bg-white text-black px-6 py-2 font-black uppercase italic hover:bg-ln-neon transition-all">
+                        <i class="fa-solid fa-eye"></i> VER VERSÃO V1.0
+                    </a>
+                </div>
+                {% endif %}
+
             </div>
             <div class="bg-ln-carbon border border-ln-neon/30 px-6 py-3 rounded flex items-center gap-3">
-                <span class="w-2 h-2 {{ 'bg-red-500' if stats.pending_setup else 'bg-ln-neon' }} rounded-full animate-pulse"></span>
+                <span class="w-2 h-2 {{ 'bg-red-500' if stats.pending_setup or stats.is_skipped else 'bg-ln-neon' }} rounded-full animate-pulse"></span>
                 <span class="font-mono text-sm font-bold text-white">
-                    {{ 'PENDENTE' if stats.pending_setup else 'ATIVO' }}
+                    {{ 'PAUSADO' if stats.is_skipped else ('PENDENTE' if stats.pending_setup else 'ATIVO') }}
                 </span>
             </div>
         </div>
@@ -121,7 +151,7 @@
         </div>
 
         {% if stats.briefing_data %}
-        <div class="bg-ln-carbon border border-white/10 p-8 mb-12 relative overflow-hidden">
+        <div id="editBriefingSection" class="bg-ln-carbon border border-white/10 p-8 mb-12 relative overflow-hidden">
             <div class="absolute top-0 right-0 p-2 bg-white/5 font-mono text-xs text-gray-500">BRIEFING V1.0</div>
             <h2 class="font-mono text-sm text-ln-neon mb-6 uppercase border-b border-white/10 pb-2">
                 // MEU BRIEFING (VOCÊ PODE EDITAR)
@@ -142,15 +172,15 @@
                                class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">
                     </div>
                     <div>
-                        <label class="block font-mono text-xs text-gray-400 mb-2">ESTILO VISUAL</label>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">ESTILO / CONTATO</label>
                         <input type="text" id="b_style" value="{{ stats.briefing_data.style }}" 
                                {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                                class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">
                     </div>
                 </div>
                 <div>
-                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES DO SITE</label>
-                    <textarea id="b_sections" rows="3"
+                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES / DETALHES</label>
+                    <textarea id="b_sections" rows="5"
                               {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
                               class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">{{ stats.briefing_data.sections }}</textarea>
                 </div>
@@ -331,98 +361,53 @@
             document.getElementById('financeModal').classList.add('hidden');
             document.getElementById('financeModal').classList.remove('flex');
         }
-
         function showPixModal(url) {
             const modal = document.getElementById('pixModal');
             const link = document.getElementById('checkoutLink');
-            
             if(link) {
                 link.href = url;
-                console.log("Link de checkout definido:", url);
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
                 modal.style.zIndex = "9999"; 
-            } else {
-                console.error("Elemento checkoutLink não encontrado");
             }
         }
-
-        // 1. Pagar Setup Pendente (Tela de Bloqueio)
         async function payPendingSetup(orderId) {
             const btn = event.target;
             const originalText = btn.innerText;
-            btn.innerText = "GERANDO...";
-            btn.disabled = true;
-
+            btn.innerText = "GERANDO..."; btn.disabled = true;
             try {
-                const res = await fetch('/api/pay_setup', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ order_id: orderId })
-                });
+                const res = await fetch('/api/pay_setup', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order_id: orderId }) });
                 const data = await res.json();
-                
-                if(res.ok) {
-                    showPixModal(data.checkout_url);
-                } else {
-                    alert("Erro: " + data.error);
-                }
-            } catch(e) {
-                console.error(e);
-                alert("Erro de conexão ao tentar pagar.");
-            } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
-            }
+                if(res.ok) showPixModal(data.checkout_url);
+                else alert("Erro: " + data.error);
+            } catch(e) { alert("Erro de conexão"); } finally { btn.innerText = originalText; btn.disabled = false; }
         }
-
-        // 2. Comprar Addon (Loja)
         async function buyAddon(addonId) {
             try {
-                const res = await fetch('/api/buy_addon', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ addon_id: addonId })
-                });
+                const res = await fetch('/api/buy_addon', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ addon_id: addonId }) });
                 const data = await res.json();
-                if(res.ok) showPixModal(data.checkout_url);
-                else alert(data.error);
+                if(res.ok) showPixModal(data.checkout_url); else alert(data.error);
             } catch(e) { alert("Erro de conexão"); }
         }
-
-        // 3. Pagar Mensalidade (ou Adiantar)
         async function paySingle(invoiceId) {
             try {
-                const res = await fetch('/api/pay_monthly', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ invoice_id: invoiceId })
-                });
+                const res = await fetch('/api/pay_monthly', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ invoice_id: invoiceId }) });
                 const data = await res.json();
-                if(res.ok) showPixModal(data.checkout_url);
-                else alert(data.error);
+                if(res.ok) showPixModal(data.checkout_url); else alert(data.error);
             } catch(e) { alert("Erro de conexão"); }
         }
-
-        // 4. Pagar Anual (Novo)
         async function payAnnual() {
             try {
-                const res = await fetch('/api/pay_annual', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
-                });
+                const res = await fetch('/api/pay_annual', { method: 'POST', headers: {'Content-Type': 'application/json'} });
                 const data = await res.json();
-                if(res.ok) showPixModal(data.checkout_url);
-                else alert(data.error);
+                if(res.ok) showPixModal(data.checkout_url); else alert(data.error);
             } catch(e) { alert("Erro de conexão"); }
         }
-        
         async function downloadContract(btn) {
             const textSpan = btn.querySelector('span');
             const originalText = textSpan.innerText;
             try {
-                textSpan.innerText = "GERANDO PDF...";
-                btn.disabled = true;
+                textSpan.innerText = "GERANDO PDF..."; btn.disabled = true;
                 const response = await fetch('/api/contract/download');
                 if (!response.ok) throw new Error('Falha no download');
                 const blob = await response.blob();
@@ -430,13 +415,7 @@
                 const a = document.createElement('a');
                 a.href = url; a.download = "Contrato_Leanttro.pdf";
                 document.body.appendChild(a); a.click(); a.remove();
-            } catch (error) { 
-                console.error(error);
-                alert("Erro ao baixar. Verifique se seu contrato já foi gerado."); 
-            } finally { 
-                textSpan.innerText = originalText; 
-                btn.disabled = false; 
-            }
+            } catch (error) { alert("Erro ao baixar."); } finally { textSpan.innerText = originalText; btn.disabled = false; }
         }
     </script>
 </body>

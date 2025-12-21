@@ -58,17 +58,19 @@ db_pool = None
 
 # --- FUNÇÃO DE INICIALIZAÇÃO DO BANCO (AUTO-CORREÇÃO) ---
 def init_db():
-    """Garante que a tabela invoices exista, já que ela sumiu do Directus"""
+    """Garante que a tabela invoices exista, addons e colunas novas do briefing"""
     global db_pool
     try:
         if DB_URL:
             db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DB_URL)
             print("✅ Pool de Conexões criado com sucesso")
             
-            # --- AUTO-FIX: CRIA TABELA INVOICES SE NÃO EXISTIR ---
+            # --- AUTO-FIX: CRIA TABELAS SE NÃO EXISTIREM ---
             conn = db_pool.getconn()
             try:
                 cur = conn.cursor()
+                
+                # 1. Tabela Invoices
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS invoices (
                         id SERIAL PRIMARY KEY,
@@ -80,11 +82,53 @@ def init_db():
                         paid_at TIMESTAMP
                     );
                 """)
+
+                # 2. Tabela Addons
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS addons (
+                        id SERIAL PRIMARY KEY,
+                        product_id INTEGER,
+                        name VARCHAR(100) NOT NULL,
+                        description TEXT,
+                        price_setup DECIMAL(10,2) NOT NULL,
+                        price_monthly DECIMAL(10,2) DEFAULT 0,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        prazo_addons INTEGER DEFAULT 2
+                    );
+                """)
+
+                # 3. Tabela Briefings e Colunas Novas (Versão)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS briefings (
+                        id SERIAL PRIMARY KEY,
+                        client_id INTEGER,
+                        colors TEXT,
+                        style_preference TEXT,
+                        site_sections TEXT,
+                        uploaded_files TEXT,
+                        ai_generated_prompt TEXT,
+                        status VARCHAR(50) DEFAULT 'ativo',
+                        revisoes_restantes INTEGER DEFAULT 3,
+                        url_versao TEXT
+                    );
+                """)
+                
+                # Fallback: Tenta adicionar colunas caso a tabela já exista sem elas
+                try:
+                    cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
+                except Exception:
+                    pass
+                
+                try:
+                    cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS url_versao TEXT;")
+                except Exception:
+                    pass
+
                 conn.commit()
-                print("✅ [SISTEMA] Tabela 'invoices' verificada/criada com sucesso.")
+                print("✅ [SISTEMA] Tabelas verificadas/criadas com sucesso.")
             except Exception as e:
                 conn.rollback()
-                print(f"❌ Erro ao verificar tabela invoices: {e}")
+                print(f"❌ Erro ao verificar tabelas: {e}")
             finally:
                 db_pool.putconn(conn)
         else:
@@ -210,11 +254,10 @@ def enviar_email(destinatario, link_recuperacao):
 def ensure_future_invoices(client_id):
     """
     Garante que o cliente tenha as próximas 12 mensalidades geradas.
-    CORREÇÃO: Busca preço no pedido/produto.
-    REGRA: Primeiro vencimento = Data Compra + 30 dias (Mínimo) -> Ajustado para próximo dia 10.
     """
     conn = get_db_connection()
-    if not conn: return
+    if not conn:
+        return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
@@ -290,15 +333,8 @@ def ensure_future_invoices(client_id):
                 start_year = last_date.year
             else:
                 # --- LÓGICA DE 1 MÊS GRÁTIS ---
-                # Data base = Data da compra
-                # Período grátis = 30 dias
                 free_until = first_order_date + timedelta(days=30)
                 
-                # O vencimento deve ser o próximo dia 10 APÓS o período grátis
-                # Ex: Comprou 01/Jan -> Grátis até 31/Jan -> Vence 10/Fev
-                # Ex: Comprou 20/Jan -> Grátis até 19/Fev -> Vence 10/Mar
-                
-                # Tentativa inicial: dia 10 do mês onde cai o fim do período grátis
                 target_due_date = date(free_until.year, free_until.month, 10)
                 
                 # Se o dia 10 desse mês já passou (ou é antes do fim do período grátis), pula para o próximo mês
@@ -308,9 +344,6 @@ def ensure_future_invoices(client_id):
                     else:
                         target_due_date = date(target_due_date.year, target_due_date.month + 1, 10)
                 
-                # Ajusta variáveis para o loop gerar a partir dessa data
-                # O loop faz: calc_month = start_month + i (onde i começa em 1)
-                # Então start_month deve ser o mês ANTERIOR ao target_due_date
                 start_month = target_due_date.month - 1
                 start_year = target_due_date.year
                 
@@ -357,7 +390,8 @@ def get_financial_dashboard(client_id):
         "annual_savings": 0.0
     }
     
-    if not conn: return info
+    if not conn:
+        return info
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -418,7 +452,8 @@ def get_financial_dashboard(client_id):
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
-    if not conn: return None
+    if not conn:
+        return None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, name, email, status FROM clients WHERE id = %s", (user_id,))
@@ -472,6 +507,7 @@ def briefing_page():
     try:
         cur = conn.cursor()
         cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
+        # Se já tiver briefing (mesmo skipped), não acessa mais essa tela
         if cur.fetchone():
             return redirect(url_for('admin_page'))
     finally:
@@ -494,7 +530,9 @@ def admin_page():
         "pending_setup": False,
         "setup_order_id": None,
         "setup_value": 0.0,
-        "available_addons": []
+        "available_addons": [],
+        "url_versao": None, # NOVO: Para linkar V1.0
+        "is_skipped": False # NOVO: Para saber se pulou etapa
     }
     
     try:
@@ -522,17 +560,17 @@ def admin_page():
                 stats['setup_order_id'] = pending_order['id']
                 stats['setup_value'] = float(pending_order['total_setup'])
             
-            # CARREGA ADDONS (Correção: Remove WHERE is_active para garantir que pegue o que tem no banco)
+            # CARREGA ADDONS
             try:
-                # Seus addons do Directus já existem, então vamos selecionar tudo.
                 cur.execute("SELECT id, name, price_setup, price_monthly, description FROM addons")
                 stats['available_addons'] = [dict(a) for a in cur.fetchall()]
             except Exception as e_addon:
                 print(f"Erro ao carregar addons: {e_addon}")
                 stats['available_addons'] = []
 
+            # ATUALIZADO: Traz url_versao e verifica status skipped
             cur.execute("""
-                SELECT status, revisoes_restantes, colors, style_preference, site_sections 
+                SELECT status, revisoes_restantes, colors, style_preference, site_sections, url_versao
                 FROM briefings WHERE client_id = %s
             """, (current_user.id,))
             briefing = cur.fetchone()
@@ -545,6 +583,10 @@ def admin_page():
                     "style": briefing['style_preference'],
                     "sections": briefing['site_sections']
                 }
+                stats["url_versao"] = briefing.get('url_versao')
+                
+                if briefing['status'] == 'skipped':
+                    stats['is_skipped'] = True
             
             if db_pool: db_pool.putconn(conn)
             elif conn: conn.close()
@@ -570,7 +612,8 @@ def api_login():
     password = data.get('password')
 
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro DB"}), 500
+    if not conn:
+        return jsonify({"error": "Erro DB"}), 500
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -604,7 +647,8 @@ def api_login():
 @app.route('/api/request_reset', methods=['POST'])
 def request_reset():
     email = request.json.get('email')
-    if not email: return jsonify({"message": "Informe o e-mail"}), 400
+    if not email:
+        return jsonify({"message": "Informe o e-mail"}), 400
 
     conn = get_db_connection()
     try:
@@ -613,14 +657,14 @@ def request_reset():
         user_data = cur.fetchone()
         
         if not user_data:
-            # Retorna sucesso falso por segurança (para não revelar se o email existe)
+            # Retorna sucesso falso por segurança
             return jsonify({"status": "success", "message": "Se o e-mail existir, um link foi enviado."})
 
         # Gera token seguro
         s = URLSafeTimedSerializer(app.secret_key)
         token = s.dumps(email, salt='recover-key')
         
-        # Gera o link (Aponta para login.html)
+        # Gera o link
         reset_link = f"{BASE_URL}/login?reset_token={token}"
         
         # Envia e-mail
@@ -682,7 +726,8 @@ def pay_setup():
         cur.execute("SELECT total_setup, product_id FROM orders WHERE id = %s AND client_id = %s AND payment_status = 'pending'", (order_id, current_user.id))
         order = cur.fetchone()
         
-        if not order: return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
+        if not order:
+            return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
         # --- VALOR REAL (OFICIAL) ---
         unit_price = float(order['total_setup'])
@@ -711,7 +756,8 @@ def buy_addon():
         cur.execute("SELECT name, price_setup, price_monthly FROM addons WHERE id = %s", (addon_id,))
         addon = cur.fetchone()
         
-        if not addon: return jsonify({"error": "Item inválido"}), 400
+        if not addon:
+            return jsonify({"error": "Item inválido"}), 400
 
         # Cria um pedido avulso só para o addon
         cur.execute("""
@@ -755,20 +801,26 @@ def update_briefing():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        cur.execute("SELECT revisoes_restantes FROM briefings WHERE client_id = %s", (current_user.id,))
+        cur.execute("SELECT revisoes_restantes, status FROM briefings WHERE client_id = %s", (current_user.id,))
         res = cur.fetchone()
         
-        if not res: return jsonify({"error": "Briefing não encontrado"}), 404
+        if not res:
+            return jsonify({"error": "Briefing não encontrado"}), 404
         
         revisoes = res['revisoes_restantes']
+        status_atual = res['status']
+
         if revisoes <= 0:
             return jsonify({"error": "Limite de alterações atingido."}), 403
 
+        # Se estava skipped e o usuário atualizou, muda para ativo
+        novo_status = 'ativo' if status_atual == 'skipped' else status_atual
+
         cur.execute("""
             UPDATE briefings 
-            SET colors = %s, style_preference = %s, site_sections = %s, revisoes_restantes = revisoes_restantes - 1
+            SET colors = %s, style_preference = %s, site_sections = %s, revisoes_restantes = revisoes_restantes - 1, status = %s
             WHERE client_id = %s
-        """, (colors, style, sections, current_user.id))
+        """, (colors, style, sections, novo_status, current_user.id))
         
         conn.commit()
         return jsonify({"success": True, "revisoes_restantes": revisoes - 1})
@@ -780,11 +832,34 @@ def update_briefing():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
+# --- NOVA ROTA: SKIP BRIEFING (PULAR ETAPA) ---
+@app.route('/api/briefing/skip', methods=['POST'])
+@login_required
+def skip_briefing():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        # Insere um briefing placeholder com status skipped
+        cur.execute("""
+            INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status, revisoes_restantes)
+            VALUES (%s, 'Pendente', 'Pendente (Pulado)', 'Pendente (Pulado)', '', 'User skipped briefing', 'skipped', 3)
+        """, (current_user.id,))
+        conn.commit()
+        
+        return jsonify({"success": True, "redirect": "/admin"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+
 # --- NOVA ROTA: GERAR PIX MENSALIDADE ÚNICA ---
 @app.route('/api/pay_monthly', methods=['POST'])
 @login_required
 def pay_monthly():
-    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    if not mp_sdk:
+        return jsonify({"error": "Mercado Pago Offline"}), 500
     
     data = request.json
     invoice_id = data.get('invoice_id')
@@ -834,7 +909,8 @@ def pay_monthly():
 @app.route('/api/pay_annual', methods=['POST'])
 @login_required
 def pay_annual():
-    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    if not mp_sdk:
+        return jsonify({"error": "Mercado Pago Offline"}), 500
     
     fin = get_financial_dashboard(current_user.id)
     total_discounted = fin['total_annual_discounted']
@@ -874,7 +950,8 @@ def pay_annual():
 @app.route('/api/catalog', methods=['GET'])
 def get_catalog():
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro de Conexão"}), 500
+    if not conn:
+        return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
@@ -913,7 +990,8 @@ def get_catalog():
 @app.route('/api/cases', methods=['GET'])
 def get_cases():
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro de Conexão"}), 500
+    if not conn:
+        return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, url, foto_site FROM \"case\" ORDER BY id DESC")
@@ -939,7 +1017,8 @@ def get_cases():
 @login_required
 def download_contract_real():
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro de conexão"}), 500
+    if not conn:
+        return jsonify({"error": "Erro de conexão"}), 500
     
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -1082,13 +1161,15 @@ def generate_contract():
 
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
-    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    if not mp_sdk:
+        return jsonify({"error": "Mercado Pago Offline"}), 500
     
     data = request.json
     client = data.get('client')
     cart = data.get('cart')
     
-    if not client or not cart: return jsonify({"error": "Dados incompletos"}), 400
+    if not client or not cart:
+        return jsonify({"error": "Dados incompletos"}), 400
 
     conn = get_db_connection()
     try:
@@ -1202,13 +1283,21 @@ def mercadopago_webhook():
     
     return jsonify({"status": "ignored"}), 200
 
+# --- SAVE BRIEFING ATUALIZADO (BLINDAGEM & CONCATENAÇÃO) ---
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
 def save_briefing():
     try:
+        # Coleta campos padrão
         colors = request.form.get('colors')
         style = request.form.get('style')
         sections = request.form.get('sections')
+
+        # Coleta campos novos para blindagem
+        benchmark = request.form.get('benchmark', '')
+        diferenciais = request.form.get('diferenciais', '')
+        instagram = request.form.get('instagram', '')
+        whatsapp_contact = request.form.get('whatsapp_contact', '')
         
         file_names = []
         if 'files' in request.files:
@@ -1219,12 +1308,16 @@ def save_briefing():
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     file_names.append(filename)
 
+        # Lógica de Concatenação (Salvar novos dados nas colunas antigas)
+        final_style = f"{style}\n\n[INFO CONTATO & REDES]\nInstagram: {instagram}\nWhatsApp: {whatsapp_contact}"
+        final_sections = f"{sections}\n\n[INFO ESTRATÉGICA]\nReferências (Benchmark): {benchmark}\nDiferenciais: {diferenciais}"
+
         tech_prompt_input = f"""
         ATUE COMO ARQUITETO DE SOFTWARE. Crie um prompt técnico:
         - CLIENTE: {current_user.name}
         - CORES: {colors}
-        - ESTILO: {style}
-        - SEÇÕES: {sections}
+        - ESTILO: {final_style}
+        - SEÇÕES: {final_sections}
         - STACK: HTML, TailwindCSS, JS.
         - OUTPUT: Apenas o prompt técnico.
         """
@@ -1241,7 +1334,7 @@ def save_briefing():
         cur.execute("""
             INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status, revisoes_restantes)
             VALUES (%s, %s, %s, %s, %s, %s, 'ativo', 3)
-        """, (current_user.id, colors, style, sections, ",".join(file_names), tech_prompt))
+        """, (current_user.id, colors, final_style, final_sections, ",".join(file_names), tech_prompt))
         conn.commit()
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
@@ -1304,7 +1397,8 @@ def briefing_chat():
 @app.route('/fix-db')
 def fix_db():
     conn = get_db_connection()
-    if not conn: return "Erro ao conectar no banco"
+    if not conn:
+        return "Erro ao conectar no banco"
     try:
         cur = conn.cursor()
         
@@ -1335,12 +1429,16 @@ def fix_db():
             );
         """)
 
-        # 3. Garante colunas legacy
-        cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
-        cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
+        # 3. Garante colunas legacy e novas
+        try:
+            cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
+            cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS url_versao TEXT;")
+            cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
+        except:
+            pass
 
         conn.commit()
-        return "✅ Banco Atualizado com Sucesso! Tabelas 'invoices' e 'addons' verificadas."
+        return "✅ Banco Atualizado com Sucesso! Tabelas 'invoices' e 'addons' verificadas e colunas adicionadas."
     except Exception as e:
         conn.rollback()
         return f"❌ Erro ao atualizar DB: {e}"

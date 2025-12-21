@@ -55,13 +55,30 @@
 
     <div class="w-full md:w-2/3 flex flex-col h-full overflow-y-auto bg-ln-black p-8 md:p-12">
         <div class="max-w-3xl mx-auto w-full">
-            <h1 class="text-4xl font-black italic uppercase mb-2">BRIEFING <span class="text-ln-neon">TÉCNICO</span></h1>
+            <div class="flex justify-between items-start mb-2">
+                <h1 class="text-4xl font-black italic uppercase">BRIEFING <span class="text-ln-neon">TÉCNICO</span></h1>
+                <button onclick="skipBriefing()" class="text-xs font-mono text-gray-500 hover:text-white border border-gray-700 hover:border-white px-3 py-1 rounded transition-all">
+                    PULAR ETAPA <i class="fa-solid fa-forward ml-1"></i>
+                </button>
+            </div>
+            
             <p class="font-mono text-gray-500 text-sm mb-10 border-l-2 border-ln-neon pl-4">
                 Preencha os dados finais aqui para oficializar o projeto.
             </p>
 
             <form id="briefingForm" class="space-y-8">
                 
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-ln-carbon border border-white/10 p-4 rounded-lg">
+                        <label class="block font-mono text-xs text-ln-neon mb-2 uppercase">Instagram</label>
+                        <input type="text" name="instagram" class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none rounded" placeholder="@seuprojeto">
+                    </div>
+                    <div class="bg-ln-carbon border border-white/10 p-4 rounded-lg">
+                        <label class="block font-mono text-xs text-ln-neon mb-2 uppercase">WhatsApp (Para Botão)</label>
+                        <input type="text" name="whatsapp_contact" class="w-full bg-black border border-white/20 p-3 text-white focus:border-ln-neon outline-none rounded" placeholder="(11) 99999-9999">
+                    </div>
+                </div>
+
                 <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
                     <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">1. Paleta de Cores</label>
                     <textarea name="colors" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-24 rounded" placeholder="Ex: Preto e Dourado..."></textarea>
@@ -73,7 +90,17 @@
                 </div>
 
                 <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
-                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">3. Seções Necessárias</label>
+                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">3. Referências (Benchmark)</label>
+                    <textarea name="benchmark" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-20 rounded" placeholder="Cole links de sites que você gosta..."></textarea>
+                </div>
+
+                <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
+                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">4. Diferenciais Estratégicos</label>
+                    <textarea name="diferenciais" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-20 rounded" placeholder="O que sua empresa tem de melhor?"></textarea>
+                </div>
+
+                <div class="bg-ln-carbon border border-white/10 p-6 rounded-lg">
+                    <label class="block font-mono text-xs text-ln-neon mb-3 uppercase">5. Seções Necessárias (Estrutura)</label>
                     <textarea name="sections" class="w-full bg-black border border-white/20 p-4 text-white focus:border-ln-neon outline-none h-24 rounded" placeholder="Ex: Home, Sobre, Serviços, Contato..."></textarea>
                 </div>
 
@@ -177,6 +204,22 @@
             } catch(err) {
                 console.error(err);
                 alert("Erro ao enviar.");
+            }
+        }
+
+        async function skipBriefing() {
+            if(!confirm("Tem certeza? O prazo de entrega ficará PAUSADO até você enviar as informações depois.")) return;
+            
+            try {
+                const res = await fetch('/api/briefing/skip', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await res.json();
+                if(data.success) window.location.href = data.redirect;
+                else alert(data.error);
+            } catch(e) {
+                alert("Erro ao pular etapa.");
             }
         }
     </script>
