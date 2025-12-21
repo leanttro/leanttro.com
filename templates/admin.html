@@ -154,43 +154,63 @@
         <div id="editBriefingSection" class="bg-ln-carbon border border-white/10 p-8 mb-12 relative overflow-hidden">
             <div class="absolute top-0 right-0 p-2 bg-white/5 font-mono text-xs text-gray-500">BRIEFING V1.0</div>
             <h2 class="font-mono text-sm text-ln-neon mb-6 uppercase border-b border-white/10 pb-2">
-                // MEU BRIEFING (VOCÊ PODE EDITAR)
+                // MEU BRIEFING COMPLETO (EDITAR)
             </h2>
+            
+            <input type="hidden" id="raw_style_data" value="{{ stats.briefing_data.style }}">
+            <input type="hidden" id="raw_sections_data" value="{{ stats.briefing_data.sections }}">
+
             <form id="editBriefingForm" class="space-y-6">
+                
                 {% if stats.financeiro.status_global == 'overdue' %}
                 <div class="bg-red-900/20 border border-red-500 p-4 mb-4 text-center">
-                    <i class="fa-solid fa-lock text-red-500 text-2xl mb-2"></i>
-                    <p class="text-red-500 font-bold text-sm uppercase">EDIÇÃO BLOQUEADA POR PENDÊNCIA FINANCEIRA</p>
+                    <i class="fa-solid fa-circle-exclamation text-red-500 text-2xl mb-2"></i>
+                    <p class="text-red-500 font-bold text-sm uppercase">PENDÊNCIA FINANCEIRA IDENTIFICADA</p>
                 </div>
                 {% endif %}
 
                 <div class="grid md:grid-cols-2 gap-6">
                     <div>
-                        <label class="block font-mono text-xs text-gray-400 mb-2">CORES PREFERIDAS</label>
-                        <input type="text" id="b_colors" value="{{ stats.briefing_data.colors }}" 
-                               {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
-                               class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">
+                        <label class="block font-mono text-xs text-ln-neon mb-2">INSTAGRAM</label>
+                        <input type="text" id="b_instagram" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors" placeholder="@exemplo">
                     </div>
                     <div>
-                        <label class="block font-mono text-xs text-gray-400 mb-2">ESTILO / CONTATO</label>
-                        <input type="text" id="b_style" value="{{ stats.briefing_data.style }}" 
-                               {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
-                               class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">
+                        <label class="block font-mono text-xs text-ln-neon mb-2">WHATSAPP (BOTÃO)</label>
+                        <input type="text" id="b_whatsapp" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors" placeholder="(11) 99999-9999">
                     </div>
                 </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">CORES PREFERIDAS</label>
+                        <textarea id="b_colors" rows="3" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors">{{ stats.briefing_data.colors }}</textarea>
+                    </div>
+                    <div>
+                        <label class="block font-mono text-xs text-gray-400 mb-2">ESTILO / VIBE</label>
+                        <textarea id="b_style" rows="3" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors"></textarea>
+                    </div>
+                </div>
+
                 <div>
-                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES / DETALHES</label>
-                    <textarea id="b_sections" rows="5"
-                              {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
-                              class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm disabled:opacity-50">{{ stats.briefing_data.sections }}</textarea>
+                    <label class="block font-mono text-xs text-ln-neon mb-2">REFERÊNCIAS (BENCHMARK)</label>
+                    <textarea id="b_benchmark" rows="2" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors" placeholder="Sites que você gosta..."></textarea>
+                </div>
+
+                <div>
+                    <label class="block font-mono text-xs text-ln-neon mb-2">DIFERENCIAIS</label>
+                    <textarea id="b_diferenciais" rows="2" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors" placeholder="Seus diferenciais..."></textarea>
+                </div>
+
+                <div>
+                    <label class="block font-mono text-xs text-gray-400 mb-2">SEÇÕES / ESTRUTURA</label>
+                    <textarea id="b_sections" rows="4" class="w-full bg-black border border-white/20 p-3 text-white font-mono text-sm focus:border-ln-neon focus:outline-none transition-colors"></textarea>
                 </div>
 
                 <div class="flex justify-end items-center gap-4 pt-4 border-t border-white/5">
                     <span id="saveStatus" class="text-xs font-mono text-gray-500"></span>
                     <button type="button" onclick="updateBriefing()" id="btnUpdate"
-                            {{ 'disabled' if stats.financeiro.status_global == 'overdue' else '' }}
-                            class="bg-white text-black px-6 py-2 font-bold uppercase hover:bg-ln-neon transition-colors disabled:opacity-50">
-                        {{ 'BLOQUEADO' if stats.financeiro.status_global == 'overdue' else 'SALVAR ALTERAÇÕES' }}
+                            class="bg-white text-black px-6 py-2 font-bold uppercase hover:bg-ln-neon transition-colors">
+                        SALVAR ALTERAÇÕES
                     </button>
                 </div>
             </form>
@@ -300,24 +320,82 @@
     </div>
 
     <script>
-        const revisoesRestantes = {{ stats.revisoes if stats.revisoes is not none else 3 }};
         const btnUpdate = document.getElementById('btnUpdate');
         const statusSpan = document.getElementById('saveStatus');
 
-        if (revisoesRestantes <= 0 && btnUpdate && btnUpdate.innerText !== 'BLOQUEADO') {
-            btnUpdate.disabled = true;
-            btnUpdate.innerText = "LIMITE DE ALTERAÇÕES ATINGIDO";
-            ['b_colors', 'b_style', 'b_sections'].forEach(id => {
-                const el = document.getElementById(id); if(el) el.disabled = true;
-            });
+        // INICIALIZAÇÃO: SEPARA OS CAMPOS MISTURADOS
+        document.addEventListener('DOMContentLoaded', function() {
+            parseBriefingFields();
+        });
+
+        function parseBriefingFields() {
+            const rawStyle = document.getElementById('raw_style_data') ? document.getElementById('raw_style_data').value : '';
+            const rawSections = document.getElementById('raw_sections_data') ? document.getElementById('raw_sections_data').value : '';
+
+            // 1. Parse Style (Extrai Insta e WhatsApp)
+            // Padrão do app.py: f"{style}\n\n[INFO CONTATO & REDES]..."
+            let styleClean = rawStyle;
+            let instaVal = "";
+            let whatsVal = "";
+
+            if (rawStyle.includes('[INFO CONTATO & REDES]')) {
+                const parts = rawStyle.split('[INFO CONTATO & REDES]');
+                styleClean = parts[0].trim();
+                const infoPart = parts[1];
+
+                const iMatch = infoPart.match(/Instagram:\s*(.*?)(\n|$)/);
+                if(iMatch) instaVal = iMatch[1].trim();
+
+                const wMatch = infoPart.match(/WhatsApp:\s*(.*?)(\n|$)/);
+                if(wMatch) whatsVal = wMatch[1].trim();
+            }
+
+            // 2. Parse Sections (Extrai Benchmark e Diferenciais)
+            // Padrão do app.py: f"{sections}\n\n[INFO ESTRATÉGICA]..."
+            let sectionsClean = rawSections;
+            let benchVal = "";
+            let difVal = "";
+
+            if (rawSections.includes('[INFO ESTRATÉGICA]')) {
+                const parts = rawSections.split('[INFO ESTRATÉGICA]');
+                sectionsClean = parts[0].trim();
+                const infoPart = parts[1];
+
+                // Como Benchmark e Diferenciais são textareas, a quebra é pelo rótulo
+                if (infoPart.includes('Diferenciais:')) {
+                    const subParts = infoPart.split('Diferenciais:');
+                    
+                    // Primeira parte é o Benchmark (removemos o label)
+                    benchVal = subParts[0].replace(/Referências \(Benchmark\):\s*/, '').trim();
+                    // Segunda parte é Diferenciais
+                    difVal = subParts[1].trim();
+                }
+            }
+
+            // Preenche os campos
+            if(document.getElementById('b_style')) document.getElementById('b_style').value = styleClean;
+            if(document.getElementById('b_instagram')) document.getElementById('b_instagram').value = instaVal;
+            if(document.getElementById('b_whatsapp')) document.getElementById('b_whatsapp').value = whatsVal;
+
+            if(document.getElementById('b_sections')) document.getElementById('b_sections').value = sectionsClean;
+            if(document.getElementById('b_benchmark')) document.getElementById('b_benchmark').value = benchVal;
+            if(document.getElementById('b_diferenciais')) document.getElementById('b_diferenciais').value = difVal;
         }
-        
+
         async function updateBriefing() {
-             if (revisoesRestantes <= 0 || btnUpdate.disabled) return;
-             
              const colors = document.getElementById('b_colors').value;
-             const style = document.getElementById('b_style').value;
-             const sections = document.getElementById('b_sections').value;
+             
+             // RECONSTRÓI A STRING ESTILO (Mesma lógica do app.py save_briefing)
+             const styleBase = document.getElementById('b_style').value;
+             const instagram = document.getElementById('b_instagram').value;
+             const whatsapp = document.getElementById('b_whatsapp').value;
+             const finalStyle = `${styleBase}\n\n[INFO CONTATO & REDES]\nInstagram: ${instagram}\nWhatsApp: ${whatsapp}`;
+
+             // RECONSTRÓI A STRING SEÇÕES
+             const sectionsBase = document.getElementById('b_sections').value;
+             const benchmark = document.getElementById('b_benchmark').value;
+             const diferenciais = document.getElementById('b_diferenciais').value;
+             const finalSections = `${sectionsBase}\n\n[INFO ESTRATÉGICA]\nReferências (Benchmark): ${benchmark}\nDiferenciais: ${diferenciais}`;
 
              btnUpdate.innerText = "SALVANDO...";
              btnUpdate.disabled = true;
@@ -326,7 +404,11 @@
                  const response = await fetch('/api/briefing/update', {
                      method: 'POST',
                      headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({ colors, style, sections })
+                     body: JSON.stringify({ 
+                        colors: colors, 
+                        style: finalStyle, 
+                        sections: finalSections 
+                     })
                  });
 
                  const data = await response.json();
@@ -335,12 +417,8 @@
                      statusSpan.innerText = "ALTERAÇÃO SALVA!";
                      statusSpan.className = "text-xs font-mono text-ln-neon";
                      document.getElementById('revisoesDisplay').innerHTML = `${data.revisoes_restantes} <span class="text-sm font-normal text-gray-500">/ 3</span>`;
-                     if (data.revisoes_restantes <= 0) {
-                         setTimeout(() => window.location.reload(), 1500);
-                     } else {
-                         btnUpdate.innerText = "SALVAR ALTERAÇÕES";
-                         btnUpdate.disabled = false;
-                     }
+                     btnUpdate.innerText = "SALVAR ALTERAÇÕES";
+                     btnUpdate.disabled = false;
                  } else {
                      statusSpan.innerText = "ERRO: " + (data.error || "Erro");
                      statusSpan.className = "text-xs font-mono text-red-500";
