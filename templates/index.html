@@ -69,7 +69,7 @@
             scroll-margin-top: 90px;
         }
 
-        /* Custom Scrollbar */
+        /* Custom Scrollbar Global */
         ::-webkit-scrollbar {
             width: 8px;
             background: #050505;
@@ -530,8 +530,8 @@
             </div>
         </div>
 
-        <div id="chat-full" class="hidden chat-hidden-bottom flex-col w-[350px] h-[500px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl overflow-hidden mt-4 transition-all duration-300 z-50">
-            <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center justify-between">
+        <div id="chat-full" class="hidden chat-hidden-bottom flex flex-col w-[350px] h-[500px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl mt-4 transition-all duration-300 z-50">
+            <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center justify-between flex-none">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full overflow-hidden border border-ln-neon relative bg-black flex-shrink-0">
                         <img src="/static/chat.png" alt="Leanttro" class="w-full h-full object-cover">
@@ -545,9 +545,9 @@
                 <button onclick="setChatState('closed', true)" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
-            <div id="chat-messages" class="flex-grow min-h-0 p-4 overflow-y-auto bg-[#050505] space-y-4 scroll-smooth"></div>
+            <div id="chat-messages" class="flex-1 min-h-0 p-4 overflow-y-auto bg-[#050505] space-y-4"></div>
 
-            <div class="p-3 bg-ln-carbon border-t border-white/10">
+            <div class="p-3 bg-ln-carbon border-t border-white/10 flex-none">
                 <form onsubmit="sendMessage(event)" class="relative">
                     <input type="text" id="chat-input" 
                            class="w-full bg-black border border-white/20 text-white text-sm rounded-full pl-4 pr-12 py-3 focus:outline-none focus:border-ln-neon placeholder-gray-600 font-mono"
@@ -627,7 +627,7 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ATUALIZADO (MUTATION OBSERVER - SOLUÇÃO DEFINITIVA) ===
+        // === 1. CHATBOT ATUALIZADO (FIX DEFINITIVO DO SCROLL) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
@@ -639,19 +639,13 @@
         let hasGreeted = false; 
         let hasTriedToClose = false; 
 
-        // FIX 2: FUNÇÃO DE SCROLL QUE OBSERVA MUDANÇAS NO DOM
-        // Isso garante que sempre que uma msg nova entrar, ele desce.
+        // OBSERVA MUDANÇAS NO DOM E ROLA PRA BAIXO
         function initScrollObserver() {
             if(!messagesContainer) return;
-            
             const observer = new MutationObserver(() => {
-                // Rola para o final suavemente
-                messagesContainer.scrollTo({
-                    top: messagesContainer.scrollHeight,
-                    behavior: 'smooth'
-                });
+                // Rola para o final de forma bruta (sem smooth para não travar)
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
             });
-            
             observer.observe(messagesContainer, { childList: true, subtree: true });
         }
 
@@ -665,7 +659,7 @@
 
             chatState = newState;
             
-            // Esconde todos primeiro com animação
+            // Esconde todos
             chatTrigger.classList.remove('chat-visible'); chatTrigger.classList.add('chat-hidden-bottom');
             chatPeek.classList.remove('chat-visible'); chatPeek.classList.add('chat-hidden-bottom');
             chatFull.classList.remove('chat-visible'); chatFull.classList.add('chat-hidden-bottom');
@@ -688,7 +682,7 @@
                         chatFull.classList.remove('chat-hidden-bottom'); 
                         chatFull.classList.add('chat-visible'); 
                         
-                        // Força scroll inicial
+                        // Scroll Imediato ao abrir
                         messagesContainer.scrollTop = messagesContainer.scrollHeight;
                         
                         if (!hasGreeted) {
@@ -713,7 +707,11 @@
                 </div>`;
             
             messagesContainer.insertAdjacentHTML('beforeend', html);
-            // O Observer vai cuidar do scroll automaticamente agora
+            
+            // FORÇA EXTRA DE SCROLL NO PRÓXIMO FRAME DE PINTURA
+            requestAnimationFrame(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
         }
 
         async function sendMessage(e) {
@@ -749,7 +747,7 @@
         
         // INICIALIZAÇÃO
         document.addEventListener('DOMContentLoaded', () => {
-            initScrollObserver(); // LIGA O OBSERVADOR DE SCROLL
+            initScrollObserver(); 
             setChatState('peek');
             loadCatalogFromDB();
             renderSlides();
