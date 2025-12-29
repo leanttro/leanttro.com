@@ -627,26 +627,41 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ATUALIZADO (LÓGICA Lelis + RETENÇÃO) ===
+        // === 1. CHATBOT ATUALIZADO (FIX DE SCROLL E INICIO) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
         const messagesContainer = document.getElementById('chat-messages');
         const chatInput = document.getElementById('chat-input');
         const indicator = document.getElementById('new-message-indicator');
+        
         let chatState = 'closed';
-        let welcomeMessageAdded = false;
-        let hasTriedToClose = false; // Controle de retenção
+        let hasGreeted = false; // Controle para não repetir o "Oi"
+        let hasTriedToClose = false; 
+
+        // FUNÇÃO DE SCROLL QUE NÃO TRAVA
+        function forceScrollBottom() {
+            if (messagesContainer) {
+                // Tenta imediatamente
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                // Garante depois de 50ms (pra dar tempo do browser renderizar)
+                setTimeout(() => {
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }, 50);
+            }
+        }
 
         function setChatState(newState, showNotification = false) {
-            // LÓGICA DE RETENÇÃO ("Não vá embora")
+            // LÓGICA DE RETENÇÃO
             if (chatState === 'full' && newState === 'closed' && !hasTriedToClose) {
                 hasTriedToClose = true;
-                appendMessage('bot', "Ei, antes de ir... quer que eu te mande nosso portfólio no WhatsApp? É só deixar seu número aqui. 👇");
-                return; // Cancela o fechamento
+                appendMessage('bot', "Ei, antes de ir... quer ver nossos cases de sucesso? 👇");
+                return; 
             }
 
             chatState = newState;
+            
+            // Esconde todos primeiro com animação
             chatTrigger.classList.remove('chat-visible'); chatTrigger.classList.add('chat-hidden-bottom');
             chatPeek.classList.remove('chat-visible'); chatPeek.classList.add('chat-hidden-bottom');
             chatFull.classList.remove('chat-visible'); chatFull.classList.add('chat-hidden-bottom');
@@ -665,8 +680,19 @@
                     setTimeout(() => { chatPeek.classList.remove('chat-hidden-bottom'); chatPeek.classList.add('chat-visible'); }, 50);
                 } else if (newState === 'full') {
                     chatFull.classList.remove('hidden');
-                    setTimeout(() => { chatFull.classList.remove('chat-hidden-bottom'); chatFull.classList.add('chat-visible'); }, 50);
-                    // Não forçamos mensagem aqui para deixar o usuário iniciar
+                    setTimeout(() => { 
+                        chatFull.classList.remove('chat-hidden-bottom'); 
+                        chatFull.classList.add('chat-visible'); 
+                        forceScrollBottom(); // Garante scroll ao abrir
+                        
+                        // DISPARAR MENSAGEM INICIAL SE FOR A PRIMEIRA VEZ
+                        if (!hasGreeted) {
+                            setTimeout(() => {
+                                appendMessage('bot', "Olá! Sou o Lelis. Já sabe qual plano é o melhor pro seu momento ou quer ajuda?");
+                                hasGreeted = true;
+                            }, 300);
+                        }
+                    }, 50);
                 }
             }, 300);
         }
@@ -674,14 +700,15 @@
         function appendMessage(sender, text) {
             const isUser = sender === 'user';
             const html = `
-                <div class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in">
+                <div class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in mb-2">
                     ${!isUser ? `<div class="w-8 h-8 rounded-full overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10"><img src="/static/chat.png" class="w-full h-full object-cover"></div>` : ''}
-                    <div class="${isUser ? 'bg-ln-neon text-black' : 'bg-ln-carbon border border-white/10 text-gray-300'} p-3 rounded-xl text-sm leading-relaxed max-w-[80%]">
+                    <div class="${isUser ? 'bg-ln-neon text-black' : 'bg-ln-carbon border border-white/10 text-gray-300'} p-3 rounded-xl text-sm leading-relaxed max-w-[85%] shadow-lg">
                         ${text}
                     </div>
                 </div>`;
+            
             messagesContainer.insertAdjacentHTML('beforeend', html);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            forceScrollBottom(); // CHAMA O SCROLL ROBUSTO
         }
 
         async function sendMessage(e) {
@@ -694,11 +721,12 @@
             
             // Efeito de "Digitando..."
             const loadingId = 'typing-' + Date.now();
-            const loadingHtml = `<div id="${loadingId}" class="text-xs text-gray-500 font-mono ml-4 mb-2 animate-pulse">Lelis está digitando...</div>`;
+            const loadingHtml = `<div id="${loadingId}" class="text-xs text-gray-500 font-mono ml-12 mb-2 animate-pulse">Digitando...</div>`;
             messagesContainer.insertAdjacentHTML('beforeend', loadingHtml);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            forceScrollBottom();
 
             try {
+                // Passa o histórico (opcional, se seu backend suportar)
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -706,23 +734,26 @@
                 });
                 const data = await response.json();
                 
-                document.getElementById(loadingId).remove();
+                const loader = document.getElementById(loadingId);
+                if(loader) loader.remove();
+                
                 appendMessage('bot', data.reply);
             } catch (error) {
-                document.getElementById(loadingId).remove();
+                const loader = document.getElementById(loadingId);
+                if(loader) loader.remove();
                 appendMessage('bot', "Minha conexão caiu... 🔌 Pode me chamar no WhatsApp?");
             }
         }
         
+        // INICIALIZAÇÃO
         document.addEventListener('DOMContentLoaded', () => {
-            setChatState('peek');
+            setChatState('peek'); // Começa com o chat pequeno aberto
             loadCatalogFromDB();
             renderSlides();
-            loadCases(); // Carrega os cases dinâmicos
+            loadCases();
         });
 
-        // === 2. LÓGICA DE PRODUTOS E CHECKOUT ===
-        
+        // === 2. LÓGICA DE PRODUTOS E CHECKOUT (MANTIDA) ===
         const iconMap = {
             'site-institucional': '<i class="fa-solid fa-user-tie"></i>',
             'loja-virtual': '<i class="fa-solid fa-shop"></i>',
@@ -757,7 +788,6 @@
                     prod.icon = iconMap[slug] || '<i class="fa-solid fa-code"></i>';
                 }
                 catalog = data;
-                console.log("Catálogo carregado:", catalog);
             } catch (e) {
                 console.error("Erro ao carregar catálogo", e);
             }
@@ -905,7 +935,7 @@
 
         document.addEventListener('keydown', (e) => { if(e.key === "Escape") closeModal(); });
 
-        // === 3. LÓGICA DO CARROSSEL DE PROJETOS (AJUSTADO) ===
+        // === 3. CARROSSEL ===
         const carouselData = [
             { name: "Site Institucional", file: "/static/proj_institucional.png", link: "#products" }, 
             { name: "Loja Virtual", file: "/static/proj_ecommerce.png", link: "#products" },
@@ -918,6 +948,7 @@
         const indicatorsContainer = document.getElementById('carousel-indicators');
 
         function renderSlides() {
+            if(!slidesContainer) return;
             slidesContainer.innerHTML = '';
             indicatorsContainer.innerHTML = '';
             
@@ -939,6 +970,7 @@
         }
 
         function updateCarousel() {
+            if(!slidesContainer) return;
             const offset = -currentSlide * 100;
             slidesContainer.style.transform = `translateX(${offset}%)`;
 
@@ -973,12 +1005,13 @@
 
         setInterval(() => changeSlide(1), 5000);
 
-        // === 4. LÓGICA DA NOVA SEÇÃO CASES (LANDO STYLE) ===
+        // === 4. CASES (LANDO STYLE) ===
         async function loadCases() {
             try {
                 const response = await fetch('/api/cases');
                 const cases = await response.json();
                 const grid = document.getElementById('cases-grid');
+                if(!grid) return;
 
                 if (!cases || cases.length === 0) {
                      grid.innerHTML = '<p class="text-gray-500 font-mono col-span-full text-center">Nenhum case cadastrado ainda.</p>';
@@ -1000,12 +1033,11 @@
                     </a>
                 `).join('');
 
-                // Inicia a animação de scroll
                 initScrollAnimations();
-
             } catch (error) {
                 console.error("Erro ao carregar cases:", error);
-                 document.getElementById('cases-grid').innerHTML = '<p class="text-red-500 font-mono col-span-full text-center">Erro ao carregar cases.</p>';
+                const grid = document.getElementById('cases-grid');
+                if(grid) grid.innerHTML = '<p class="text-red-500 font-mono col-span-full text-center">Erro ao carregar cases.</p>';
             }
         }
 
@@ -1013,15 +1045,13 @@
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
-                        // Adiciona a classe que dispara a animação CSS
                         entry.target.classList.add('is-visible');
-                        // Para de observar o elemento após ele aparecer
                         observer.unobserve(entry.target);
                     }
                 });
             }, {
-                threshold: 0.15, // Dispara quando 15% do elemento estiver visível
-                rootMargin: "0px 0px -100px 0px" // Ajuste fino para disparar um pouco antes
+                threshold: 0.15, 
+                rootMargin: "0px 0px -100px 0px"
             });
 
             document.querySelectorAll('.case-scroll-item').forEach(item => {
