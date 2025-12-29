@@ -545,7 +545,7 @@
                 <button onclick="setChatState('closed', true)" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
-            <div id="chat-messages" class="flex-grow p-4 overflow-y-auto bg-[#050505] space-y-4"></div>
+            <div id="chat-messages" class="flex-grow min-h-0 p-4 overflow-y-auto bg-[#050505] space-y-4 scroll-smooth"></div>
 
             <div class="p-3 bg-ln-carbon border-t border-white/10">
                 <form onsubmit="sendMessage(event)" class="relative">
@@ -627,7 +627,7 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ATUALIZADO (FIX DE SCROLL E INICIO) ===
+        // === 1. CHATBOT ATUALIZADO (MUTATION OBSERVER - SOLUÇÃO DEFINITIVA) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
@@ -636,19 +636,23 @@
         const indicator = document.getElementById('new-message-indicator');
         
         let chatState = 'closed';
-        let hasGreeted = false; // Controle para não repetir o "Oi"
+        let hasGreeted = false; 
         let hasTriedToClose = false; 
 
-        // FUNÇÃO DE SCROLL QUE NÃO TRAVA
-        function forceScrollBottom() {
-            if (messagesContainer) {
-                // Tenta imediatamente
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                // Garante depois de 50ms (pra dar tempo do browser renderizar)
-                setTimeout(() => {
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                }, 50);
-            }
+        // FIX 2: FUNÇÃO DE SCROLL QUE OBSERVA MUDANÇAS NO DOM
+        // Isso garante que sempre que uma msg nova entrar, ele desce.
+        function initScrollObserver() {
+            if(!messagesContainer) return;
+            
+            const observer = new MutationObserver(() => {
+                // Rola para o final suavemente
+                messagesContainer.scrollTo({
+                    top: messagesContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            });
+            
+            observer.observe(messagesContainer, { childList: true, subtree: true });
         }
 
         function setChatState(newState, showNotification = false) {
@@ -683,9 +687,10 @@
                     setTimeout(() => { 
                         chatFull.classList.remove('chat-hidden-bottom'); 
                         chatFull.classList.add('chat-visible'); 
-                        forceScrollBottom(); // Garante scroll ao abrir
                         
-                        // DISPARAR MENSAGEM INICIAL SE FOR A PRIMEIRA VEZ
+                        // Força scroll inicial
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        
                         if (!hasGreeted) {
                             setTimeout(() => {
                                 appendMessage('bot', "Olá! Sou o Lelis. Já sabe qual plano é o melhor pro seu momento ou quer ajuda?");
@@ -708,7 +713,7 @@
                 </div>`;
             
             messagesContainer.insertAdjacentHTML('beforeend', html);
-            forceScrollBottom(); // CHAMA O SCROLL ROBUSTO
+            // O Observer vai cuidar do scroll automaticamente agora
         }
 
         async function sendMessage(e) {
@@ -719,14 +724,11 @@
             appendMessage('user', text);
             chatInput.value = '';
             
-            // Efeito de "Digitando..."
             const loadingId = 'typing-' + Date.now();
             const loadingHtml = `<div id="${loadingId}" class="text-xs text-gray-500 font-mono ml-12 mb-2 animate-pulse">Digitando...</div>`;
             messagesContainer.insertAdjacentHTML('beforeend', loadingHtml);
-            forceScrollBottom();
 
             try {
-                // Passa o histórico (opcional, se seu backend suportar)
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -747,13 +749,14 @@
         
         // INICIALIZAÇÃO
         document.addEventListener('DOMContentLoaded', () => {
-            setChatState('peek'); // Começa com o chat pequeno aberto
+            initScrollObserver(); // LIGA O OBSERVADOR DE SCROLL
+            setChatState('peek');
             loadCatalogFromDB();
             renderSlides();
             loadCases();
         });
 
-        // === 2. LÓGICA DE PRODUTOS E CHECKOUT (MANTIDA) ===
+        // === 2. LÓGICA DE PRODUTOS E CHECKOUT ===
         const iconMap = {
             'site-institucional': '<i class="fa-solid fa-user-tie"></i>',
             'loja-virtual': '<i class="fa-solid fa-shop"></i>',
