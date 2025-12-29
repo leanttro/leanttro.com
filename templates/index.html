@@ -509,16 +509,20 @@
         </button>
 
         <div id="chat-peek" class="hidden chat-hidden-bottom flex-col w-[300px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl overflow-hidden mt-4 transition-all duration-300 z-50">
-            <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full overflow-hidden border border-ln-neon relative bg-black flex-shrink-0">
-                    <img src="/static/chat.png" class="w-full h-full object-cover">
-                    <div class="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border border-black"></div>
+            <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full overflow-hidden border border-ln-neon relative bg-black flex-shrink-0">
+                        <img src="/static/chat.png" class="w-full h-full object-cover">
+                        <div class="absolute bottom-0 right-0 w-2 h-2 bg-green-500 rounded-full border border-black"></div>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold text-sm">Leanttro AI</h4>
+                        <p class="text-[10px] text-ln-neon font-mono">ONLINE AGORA</p>
+                    </div>
                 </div>
-                <div>
-                    <h4 class="text-white font-bold text-sm">Leanttro AI</h4>
-                    <p class="text-[10px] text-ln-neon font-mono">ONLINE AGORA</p>
-                </div>
+                <button onclick="setChatState('closed', true)" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
             </div>
+            
             <div class="p-4 bg-[#050505]">
                 <div class="bg-ln-carbon border border-white/10 text-gray-300 p-3 rounded-xl text-sm leading-relaxed mb-4">
                     Olá! 👋 Posso te ajudar a escolher o plano ideal para o seu negócio?
@@ -530,7 +534,7 @@
             </div>
         </div>
 
-        <div id="chat-full" class="hidden chat-hidden-bottom flex flex-col w-[350px] h-[500px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl mt-4 transition-all duration-300 z-50">
+        <div id="chat-full" class="hidden chat-hidden-bottom flex-col w-[350px] h-[500px] bg-[#0a0a0a] border border-white/20 rounded-2xl shadow-2xl overflow-hidden mt-4 transition-all duration-300 z-50">
             <div class="bg-ln-carbon p-4 border-b border-white/10 flex items-center justify-between flex-none">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full overflow-hidden border border-ln-neon relative bg-black flex-shrink-0">
@@ -627,7 +631,7 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ATUALIZADO (FIX DEFINITIVO DO SCROLL) ===
+        // === 1. CHATBOT ATUALIZADO (FIX DE SCROLL E INICIO) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
@@ -698,11 +702,15 @@
 
         function appendMessage(sender, text) {
             const isUser = sender === 'user';
+
+            // CORREÇÃO: Transforma markdown de negrito **texto** em tag <strong>texto</strong>
+            const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
             const html = `
                 <div class="flex gap-3 ${isUser ? 'flex-row-reverse' : ''} animate-fade-in mb-2">
                     ${!isUser ? `<div class="w-8 h-8 rounded-full overflow-hidden bg-gray-800 flex-shrink-0 border border-white/10"><img src="/static/chat.png" class="w-full h-full object-cover"></div>` : ''}
                     <div class="${isUser ? 'bg-ln-neon text-black' : 'bg-ln-carbon border border-white/10 text-gray-300'} p-3 rounded-xl text-sm leading-relaxed max-w-[85%] shadow-lg">
-                        ${text}
+                        ${formattedText}
                     </div>
                 </div>`;
             
