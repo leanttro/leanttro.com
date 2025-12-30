@@ -631,7 +631,7 @@
     </div>
 
     <script>
-        // === 1. CHATBOT ATUALIZADO (FIX DE SCROLL E INICIO) ===
+        // === 1. CHATBOT ATUALIZADO (FIX DE SCROLL DEFINITIVO + FORMATAGEM) ===
         const chatTrigger = document.getElementById('chat-trigger');
         const chatPeek = document.getElementById('chat-peek');
         const chatFull = document.getElementById('chat-full');
@@ -643,11 +643,10 @@
         let hasGreeted = false; 
         let hasTriedToClose = false; 
 
-        // OBSERVA MUDANÇAS NO DOM E ROLA PRA BAIXO
+        // OBSERVA MUDANÇAS NO DOM E ROLA PRA BAIXO (SEM ANIMAÇÃO PARA EVITAR TRAVAS)
         function initScrollObserver() {
             if(!messagesContainer) return;
             const observer = new MutationObserver(() => {
-                // Rola para o final de forma bruta (sem smooth para não travar)
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
             });
             observer.observe(messagesContainer, { childList: true, subtree: true });
@@ -704,6 +703,7 @@
             const isUser = sender === 'user';
 
             // CORREÇÃO: Transforma markdown de negrito **texto** em tag <strong>texto</strong>
+            // O regex foi ajustado para pegar qualquer conteúdo entre asteriscos
             const formattedText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 
             const html = `
@@ -716,10 +716,10 @@
             
             messagesContainer.insertAdjacentHTML('beforeend', html);
             
-            // FORÇA EXTRA DE SCROLL NO PRÓXIMO FRAME DE PINTURA
-            requestAnimationFrame(() => {
+            // GARANTIA EXTRA DE SCROLL
+            setTimeout(() => {
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            });
+            }, 10);
         }
 
         async function sendMessage(e) {
