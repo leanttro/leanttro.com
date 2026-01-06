@@ -26,6 +26,7 @@ from itsdangerous import URLSafeTimedSerializer
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+import locale
 
 load_dotenv()
 
@@ -1012,7 +1013,7 @@ def get_cases():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- ROTA DE DOWNLOAD DO CONTRATO (ATUALIZADA COM CNPJ E NF) ---
+# --- ROTA DE DOWNLOAD DO CONTRATO (ATUALIZADA: ESTILO FORMAL & PRAZOS DINÂMICOS) ---
 @app.route('/api/contract/download', methods=['GET'])
 @login_required
 def download_contract_real():
@@ -1023,9 +1024,11 @@ def download_contract_real():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        # Query atualizada para pegar addons e slug do produto
         cur.execute("""
-            SELECT c.name, c.document, p.name as product_name, p.prazo_products,
-                   o.total_setup, o.total_monthly
+            SELECT c.name, c.document, c.email,
+                   p.name as product_name, p.slug as product_slug,
+                   o.total_setup, o.total_monthly, o.selected_addons, o.created_at
             FROM clients c
             JOIN orders o ON c.id = o.client_id
             JOIN products p ON o.product_id = p.id
@@ -1038,59 +1041,162 @@ def download_contract_real():
         if not data:
             return jsonify({"error": "Nenhum contrato ativo encontrado."}), 404
 
+        # --- CÁLCULO DE PRAZOS (LÓGICA NOVA) ---
+        # 1. Conta quantos addons tem
+        try:
+            addons_list = json.loads(data['selected_addons']) if data['selected_addons'] else []
+            qtd_addons = len(addons_list)
+        except:
+            qtd_addons = 0
+            
+        # 2. Define prazo base
+        slug = data.get('product_slug', '').lower()
+        nome_prod = data.get('product_name', '').lower()
+        
+        if 'loja' in slug or 'virtual' in slug or 'ecommerce' in slug:
+            prazo_base = 20
+        elif 'custom' in slug or 'corp' in slug:
+             prazo_base = 30 # Projetos custom
+        else:
+            prazo_base = 15 # Institucional, Landing Page, etc.
+            
+        # 3. Cálculo Final
+        dias_adicionais = qtd_addons * 2
+        prazo_final = prazo_base + dias_adicionais
+
+        # --- GERAÇÃO DO PDF FORMAL ---
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
         
-        p.setFillColorRGB(0.05, 0.05, 0.05)
-        p.rect(0, height - 100, width, 100, fill=1)
-        p.setFillColorRGB(0.82, 1, 0)
-        p.setFont("Helvetica-BoldOblique", 24)
-        p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
-        
-        # --- ADICIONADO CNPJ ---
-        p.setFillColorRGB(1, 1, 1)
-        p.setFont("Helvetica", 10)
-        p.drawString(50, height - 85, f"CNPJ: {COMPANY_CNPJ}")
-        # -----------------------
+        # Margens
+        margin_left = 50
+        y = height - 50
+        line_height = 14
 
-        p.setFillColorRGB(0, 0, 0)
-        p.setFont("Helvetica-Bold", 18)
-        p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
-        
-        p.setFont("Helvetica", 12)
-        y = height - 200
-        p.drawString(50, y, f"CONTRATANTE: {data['name'].upper()}")
-        p.drawString(50, y-20, f"DOCUMENTO: {data.get('document', 'Não informado')}")
-        
-        y -= 80
+        # --- CABEÇALHO ---
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(50, y, "ESCOPO E PRAZOS")
-        p.setFont("Helvetica", 12)
-        y -= 25
-        p.drawString(50, y, f"Projeto: {data['product_name']}")
-        
-        prazo_str = extract_days(data.get('prazo_products')) or 10
-        p.drawString(50, y-20, f"Entrega Estimada: {prazo_str} dias úteis")
-        
-        p.drawString(50, y-40, f"Setup: R$ {data['total_setup']:,.2f}")
-        p.drawString(50, y-60, f"Mensal: R$ {data['total_monthly']:,.2f}")
-        
-        # --- ALTERAÇÃO: CLÁUSULAS + NF ---
-        y -= 100
-        p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "CLÁUSULAS GERAIS E NOTA FISCAL")
-        p.setFont("Helvetica", 10)
+        p.drawCentredString(width / 2, y, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
         y -= 20
-        p.drawString(50, y, "1. O CONTRATANTE tem direito a 03 (três) rodadas completas de revisão.")
-        y -= 15
-        p.drawString(50, y, "2. A mensalidade cobre: Hospedagem, Certificado de Segurança (SSL) e Suporte Técnico.")
-        y -= 15
-        p.drawString(50, y, f"3. A Nota Fiscal de Serviço (NFS-e) será emitida pela contratada ({COMPANY_CNPJ})")
-        y -= 15
-        p.drawString(65, y, "automaticamente após a entrega final e aceite do projeto.")
-        # -----------------------------------------------------
+        p.drawCentredString(width / 2, y, "DE DESENVOLVIMENTO DE SOFTWARE E LICENÇA DE USO")
+        y -= 40
+
+        # --- PARTES ---
+        p.setFont("Helvetica", 10)
         
+        # CONTRATADA
+        texto_contratada = [
+            "Pelo presente instrumento particular, de um lado:",
+            "CONTRATADA: LEANTTRO DIGITAL SOLUTIONS, nome fantasia de LEANDRO ANDRADE DE OLIVEIRA,",
+            f"pessoa jurídica de direito privado, inscrita no CNPJ sob o nº {COMPANY_CNPJ},",
+            "doravante denominada simplesmente LEANTTRO."
+        ]
+        
+        for linha in texto_contratada:
+            p.drawString(margin_left, y, linha)
+            y -= line_height
+            
+        y -= 10
+        
+        # CONTRATANTE
+        doc_cliente = data.get('document') or "Não informado"
+        texto_contratante = [
+            "De outro lado:",
+            f"CONTRATANTE: {data['name'].upper()},",
+            f"Inscrito(a) no CPF/CNPJ sob o nº {doc_cliente},",
+            f"E-mail de contato: {data.get('email')}.",
+            "Doravante denominado(a) simplesmente CONTRATANTE."
+        ]
+
+        for linha in texto_contratante:
+            p.drawString(margin_left, y, linha)
+            y -= line_height
+
+        y -= 20
+        p.drawString(margin_left, y, "Resolvem as Partes, de comum acordo, celebrar o presente Contrato, regido pelas seguintes cláusulas:")
+        y -= 30
+
+        # --- CLÁUSULAS ---
+        def draw_clause_title(title, current_y):
+            p.setFont("Helvetica-Bold", 11)
+            p.drawString(margin_left, current_y, title)
+            return current_y - 15
+
+        def draw_clause_text(text_lines, current_y):
+            p.setFont("Helvetica", 10)
+            for line in text_lines:
+                p.drawString(margin_left, current_y, line)
+                current_y -= 12
+            return current_y - 10
+
+        # 1. OBJETO
+        y = draw_clause_title("CLÁUSULA PRIMEIRA - DO OBJETO", y)
+        y = draw_clause_text([
+            f"1.1. O presente contrato tem por objeto o desenvolvimento e licenciamento do projeto: {data['product_name'].upper()}.",
+            "1.2. O serviço inclui a configuração de servidor, instalação de certificado SSL e estruturação visual",
+            "conforme briefing preenchido pelo CONTRATANTE."
+        ], y)
+
+        # 2. PRAZO
+        y = draw_clause_title("CLÁUSULA SEGUNDA - DOS PRAZOS DE ENTREGA", y)
+        y = draw_clause_text([
+            f"2.1. O prazo estimado para entrega da primeira versão do projeto é de {prazo_final} dias úteis.",
+            f"     (Base: {prazo_base} dias + {dias_adicionais} dias referentes a {qtd_addons} funcionalidades adicionais contratadas).",
+            "2.2. A contagem do prazo inicia-se apenas após o envio completo de todo o material (textos e imagens)",
+            "     necessário pelo CONTRATANTE através da plataforma ou e-mail."
+        ], y)
+
+        # 3. VALORES
+        y = draw_clause_title("CLÁUSULA TERCEIRA - DO PREÇO E MENSALIDADE", y)
+        y = draw_clause_text([
+            f"3.1. Valor de Setup (Criação/Implementação): R$ {data['total_setup']:,.2f}",
+            f"3.2. Valor da Mensalidade (Manutenção/Hospedagem): R$ {data['total_monthly']:,.2f}",
+            "3.3. A mensalidade cobre: Hospedagem de alta performance, Certificado de Segurança (SSL),",
+            "     Backup diário e Suporte Técnico via Helpdesk."
+        ], y)
+
+        # 4. DISPOSIÇÕES GERAIS (INCLUINDO AS SOLICITAÇÕES DO PROMPT)
+        y = draw_clause_title("CLÁUSULA QUARTA - DISPOSIÇÕES GERAIS E NOTA FISCAL", y)
+        y = draw_clause_text([
+            "4.1. O CONTRATANTE tem direito a 03 (três) rodadas completas de revisão do layout.",
+            "4.2. Domínio: O endereço web (ex: .com.br) não está incluso e deve ser adquirido pelo CONTRATANTE.",
+            "     A LEANTTRO realizará a configuração técnica do apontamento DNS gratuitamente.",
+            f"4.3. NOTA FISCAL: A Nota Fiscal de Serviço (NFS-e) será emitida pela contratada ({COMPANY_CNPJ})",
+            "     automaticamente após a entrega final e aceite do projeto ou pagamento integral do setup.",
+            "4.4. A inadimplência superior a 10 dias acarretará na suspensão temporária dos serviços."
+        ], y)
+
+        # 5. FORO
+        y = draw_clause_title("CLÁUSULA QUINTA - DO FORO", y)
+        y = draw_clause_text([
+            "5.1. Fica eleito o foro da Comarca de São Paulo/SP para dirimir quaisquer dúvidas oriundas deste contrato."
+        ], y)
+
+        y -= 40
+        
+        # --- ASSINATURAS ---
+        p.setLineWidth(0.5)
+        
+        # Assinatura Leanttro
+        p.line(margin_left, y, margin_left + 200, y)
+        p.setFont("Helvetica", 8)
+        p.drawString(margin_left, y - 10, "LEANTTRO DIGITAL SOLUTIONS")
+        p.drawString(margin_left, y - 20, "Leandro Andrade de Oliveira")
+
+        # Assinatura Cliente
+        p.line(width - margin_left - 200, y, width - margin_left, y)
+        p.drawRightString(width - margin_left, y - 10, data['name'].upper())
+        p.drawRightString(width - margin_left, y - 20, f"Doc: {doc_cliente}")
+        
+        # Data
+        try:
+            locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
+        except:
+            pass # Fallback se não tiver locale pt_BR instalado no servidor
+            
+        data_atual = datetime.now().strftime("%d de %B de %Y")
+        p.drawCentredString(width / 2, y - 60, f"São Paulo, {data_atual}")
+
         p.showPage()
         p.save()
         buffer.seek(0)
@@ -1100,6 +1206,7 @@ def download_contract_real():
         
     except Exception as e:
         print(f"Erro PDF Real: {e}")
+        traceback.print_exc()
         return jsonify({"error": "Erro ao gerar contrato"}), 500
     finally:
         if db_pool and conn: db_pool.putconn(conn)
