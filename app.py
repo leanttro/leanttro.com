@@ -15,6 +15,7 @@ import google.generativeai as genai
 import mercadopago
 from dotenv import load_dotenv
 import traceback
+import uuid # Novo import para senha dummy
 
 # --- NOVAS IMPORTAÇÕES PARA EMAIL ---
 import smtplib
@@ -124,6 +125,20 @@ def init_db():
                     cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS url_versao TEXT;")
                 except Exception:
                     pass
+                
+                # Tenta adicionar colunas de CRM na tabela clients se não existirem
+                crm_cols = [
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS temperatura VARCHAR(50);",
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS dor_principal TEXT;",
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS empresa_ramo VARCHAR(100);",
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS cargo VARCHAR(100);",
+                    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(50);"
+                ]
+                for sql in crm_cols:
+                    try:
+                        cur.execute(sql)
+                    except:
+                        pass # Ignora se já existir ou erro de permissão
 
                 conn.commit()
                 print("✅ [SISTEMA] Tabelas verificadas/criadas com sucesso.")
@@ -163,36 +178,32 @@ if GEMINI_KEY:
             SELECTED_MODEL_NAME = found_model
             print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
 
-        # --- CÉREBRO DO LELIS ATUALIZADO (INCLUINDO LOJA VIRTUAL) ---
+        # --- CÉREBRO DO LELIS ATUALIZADO (MODO VENDEDOR HUNTER) ---
         SYSTEM_PROMPT_LELIS = """
-        VOCÊ É: Lelis, Consultor Executivo da Leanttro Digital.
-        SUA MISSÃO: Fechar contratos de alto valor passando autoridade e segurança técnica.
-        TOM: Profissional, Seguro, Educado e Direto. Não use gírias.
-
-        --- SEU CATÁLOGO DE SOLUÇÕES (Use estas chaves para classificar) ---
+        VOCÊ É: Lelis, Executivo de Vendas da Leanttro Digital.
         
-        1. LOGÍSTICA (leanttro_stock): Para quem perde material ou tem estoque bagunçado. 
-           > Killer Feature: IA no WhatsApp ("Onde está a peça X?").
-           
-        2. GRÁFICA (leanttro_print): Para quem sofre com aprovação de arte e erro de cor.
-           > Killer Feature: Editor Canvas Web embutido.
-           
-        3. RH/OPERAÇÕES (leanttro_ops): Para empresas com horas extras descontroladas e risco trabalhista.
-           > Killer Feature: Bloqueio de ponto retroativo e fluxo hierárquico.
-           
-        4. EVENTOS (leanttro_eventos): Casamentos e festas (Divide o Pix).
-           > Killer Feature: Lista de presentes converte em PIX (Cash-out).
-           
-        5. INSTITUCIONAL (leanttro_web): Site rápido e barato.
+        OBJETIVO PRINCIPAL: Qualificar o lead e coletar dados para contato (CRM) enquanto vende.
         
-        6. LOJA VIRTUAL / E-COMMERCE (leanttro_store): 
-           > GATILHO: Cliente quer vender online, reclama de lentidão no WooCommerce ou site atual caindo.
-           > ARGUMENTO: "Nossas lojas usam tecnologia Headless (API + Frontend Puro). Carrega em 0.5s. Veja nosso case de Autopeças (Filtro de Carro + Carrinho Instantâneo)."
-           > OFERTA: Integração com WhatsApp e Estoque.
-
-        --- INSTRUÇÃO DE RESPOSTA ---
-        Se o cliente falar de Vendas Online, Peças ou Loja, venda o LEANTTRO STORE.
-        Ao final de CADA resposta, se identificar uma oportunidade, tente extrair o email ou zap.
+        --- SEU ROTEIRO DE QUALIFICAÇÃO (Siga esta ordem sutilmente) ---
+        1. PERMISSÃO: No início, pergunte educadamente se pode salvar o contato dele para enviar novidades ou propostas.
+        2. DADOS BÁSICOS: Descubra o NOME, depois o EMAIL, depois o WHATSAPP. Não peça tudo de uma vez.
+        3. PERFIL: Pergunte o CARGO e o NOME DA EMPRESA ou RAMO.
+        4. DOR: Identifique o problema principal (Estoque, Vendas, Processos).
+        
+        --- CLASSIFICAÇÃO MENTAL (Temperatura) ---
+        - QUENTE: Quer comprar agora, tem orçamento, reclama de dor latente.
+        - FRIO: Apenas curioso, estudante, sem empresa.
+        
+        --- SEU CATÁLOGO ---
+        1. LOGÍSTICA (leanttro_stock): IA no WhatsApp para estoque.
+        2. GRÁFICA (leanttro_print): Editor Canvas Web.
+        3. RH/OPERAÇÕES (leanttro_ops): Bloqueio de ponto.
+        4. EVENTOS (leanttro_eventos): Divide o Pix.
+        5. INSTITUCIONAL (leanttro_web): Sites rápidos.
+        6. LOJA VIRTUAL (leanttro_store): Headless E-commerce.
+        
+        TOM: Profissional, Persuasivo, "Lobo de Wall Street" ético.
+        Nunca saia do personagem. Se o usuário der um dado, agradeça e salve mentalmente.
         """
         
         try:
@@ -507,6 +518,115 @@ def extract_days(value):
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- FUNÇÃO: EXTRAÇÃO DE DADOS EM SEGUNDO PLANO (HUNTER MODE) ---
+def process_lead_data(user_message, session_lead_id=None):
+    """
+    Usa uma chamada rápida de IA para extrair dados estruturados da mensagem
+    e atualizar o banco de dados 'clients' em tempo real.
+    """
+    try:
+        # 1. Extração via IA
+        extract_prompt = f"""
+        Analise a mensagem do usuário: "{user_message}".
+        Extraia SOMENTE em JSON:
+        {{
+            "name": "nome se houver",
+            "email": "email se houver",
+            "whatsapp": "numero se houver",
+            "company_name": "empresa se houver",
+            "cargo": "cargo se houver",
+            "temperatura": "quente ou frio (baseado no interesse)",
+            "dor_principal": "resumo do problema citado"
+        }}
+        Se não tiver a info, use null.
+        """
+        model = genai.GenerativeModel("gemini-pro")
+        resp = model.generate_content(extract_prompt)
+        data = json.loads(resp.text.replace('```json','').replace('```',''))
+        
+        # Se não extraiu nada relevante, aborta para economizar DB
+        if not any(data.values()):
+            return session_lead_id
+
+        conn = get_db_connection()
+        if not conn: return session_lead_id
+        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        lead_id = session_lead_id
+        
+        # 2. Lógica de Upsert (Salvar um por um)
+        
+        # Cenário A: Temos um ID de sessão (Lead já começou a falar)
+        if lead_id:
+            # Constrói query dinâmica de update apenas com campos não nulos
+            fields = []
+            values = []
+            for k, v in data.items():
+                if v:
+                    fields.append(f"{k} = %s")
+                    values.append(v)
+            
+            if fields:
+                values.append(lead_id)
+                sql = f"UPDATE clients SET {', '.join(fields)} WHERE id = %s"
+                cur.execute(sql, tuple(values))
+                conn.commit()
+
+        # Cenário B: Não temos ID, mas o usuário deu Email agora (Vira lead oficial)
+        elif data.get('email'):
+            # Verifica se já existe
+            cur.execute("SELECT id FROM clients WHERE email = %s", (data['email'],))
+            exists = cur.fetchone()
+            if exists:
+                lead_id = exists['id']
+                # Atualiza dados extras
+                process_lead_data(user_message, lead_id) # Recursivo para update
+            else:
+                # Cria novo lead completo
+                dummy_pass = generate_password_hash(str(uuid.uuid4()))
+                cur.execute("""
+                    INSERT INTO clients (name, email, whatsapp, company_name, cargo, temperatura, dor_principal, password_hash, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'lead', NOW())
+                    RETURNING id
+                """, (
+                    data.get('name') or 'Lead Sem Nome',
+                    data.get('email'),
+                    data.get('whatsapp'),
+                    data.get('company_name'),
+                    data.get('cargo'),
+                    data.get('temperatura') or 'frio',
+                    data.get('dor_principal'),
+                    dummy_pass
+                ))
+                lead_id = cur.fetchone()['id']
+                conn.commit()
+
+        # Cenário C: Não temos ID e nem Email, mas temos Nome (Lead frio iniciando)
+        elif data.get('name') and not lead_id:
+            dummy_pass = generate_password_hash(str(uuid.uuid4()))
+            # Cria lead provisório só com nome
+            cur.execute("""
+                INSERT INTO clients (name, password_hash, status, temperatura, created_at)
+                VALUES (%s, %s, 'lead_provisorio', 'frio', NOW())
+                RETURNING id
+            """, (data['name'], dummy_pass))
+            lead_id = cur.fetchone()['id']
+            conn.commit()
+
+        # Cenário D: Apenas conversa solta, sem dados identificáveis -> não salva nada ainda
+        
+        return lead_id
+
+    except Exception as e:
+        print(f"Erro Background Lead Process: {e}")
+        if conn: conn.rollback()
+        return session_lead_id
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn and not db_pool: conn.close()
+
 
 # --- ROTAS DE FRONTEND ---
 
@@ -1481,7 +1601,7 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS ---
+# --- CHATBOT LELIS (ATUALIZADO COM HUNTER MODE) ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     print(f"\n--- [LELIS] Chat trigger (Modelo ativo: {SELECTED_MODEL_NAME}) ---")
@@ -1492,7 +1612,21 @@ def handle_chat():
     try:
         data = request.json
         history = data.get('conversationHistory', [])
-        
+        user_message = data.get('message', '')
+        if history and history[-1]['role'] == 'user':
+            user_message = history[-1]['text']
+        if not user_message: user_message = "Olá"
+
+        # --- INTELIGÊNCIA PARALELA (CAPTURA DE LEADS) ---
+        # Só ativa se o usuário NÃO estiver logado ou se for um lead frio
+        if not current_user.is_authenticated:
+            session_lead_id = session.get('temp_lead_id')
+            # Roda a extração em segundo plano (na prática aqui é síncrono mas rápido)
+            new_lead_id = process_lead_data(user_message, session_lead_id)
+            if new_lead_id:
+                session['temp_lead_id'] = new_lead_id
+        # ------------------------------------------------
+
         gemini_history = []
         for message in history:
             role = 'user' if message['user'] == 'user' else 'model'
@@ -1500,11 +1634,6 @@ def handle_chat():
             
         chat_session = chat_model.start_chat(history=gemini_history)
         
-        user_message = data.get('message', '') 
-        if history and history[-1]['role'] == 'user':
-            user_message = history[-1]['text']
-        if not user_message: user_message = "Olá"
-
         response = chat_session.send_message(
             user_message,
             generation_config=genai.types.GenerationConfig(temperature=0.7),
@@ -1517,6 +1646,7 @@ def handle_chat():
 
     except Exception as e:
         print(f"❌ ERRO CHAT: {e}")
+        traceback.print_exc()
         return jsonify({'reply': "Minha conexão caiu... 🔌 Chama no WhatsApp?"}), 200
 
 @app.route('/api/briefing/chat', methods=['POST'])
