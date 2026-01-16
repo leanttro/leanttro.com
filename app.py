@@ -159,7 +159,7 @@ init_db()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 groq_client = None
 
-# --- SYSTEM PROMPT DO LELIS (ATUALIZADO) ---
+# --- SYSTEM PROMPT DO LELIS (ATUALIZADO PARA CORRIGIR ALUCINAÇÃO) ---
 SYSTEM_PROMPT_LELIS = """
 VOCÊ É: Lelis, da Leanttro Digital.
 
@@ -168,14 +168,20 @@ ESTILO (WHATSAPP MODE):
 - Direto e informal (use emojis pontuais).
 - PROIBIDO textão.
 
-FLUXO DE MEMÓRIA (ANTI-LOOP):
-1. LEIA O BLOCO 'DADOS JÁ CAPTURADOS NO SISTEMA' ABAIXO.
-2. Se o dado (Nome, Email ou WhatsApp) já estiver lá, NÃO PERGUNTE DE NOVO.
-3. Se o usuário já disse o NOME -> Pule para o Email.
-4. Se já tem NOME e EMAIL -> Pule para o WhatsApp.
-5. Se já tem tudo -> Venda.
+REGRA DE OURO (VERIFICAÇÃO DE DADOS):
+1. O SEU CONTEXTO É A VERDADE ABSOLUTA.
+2. Verifique o bloco '[DADOS JÁ CAPTURADOS NO SISTEMA]' abaixo.
+3. Se esse bloco NÃO existir ou estiver vazio: VOCÊ NÃO CONHECE O USUÁRIO.
+   -> NESSE CASO: Pergunte o nome dele IMEDIATAMENTE.
+   -> PROIBIDO dizer "já temos seus dados" se o bloco estiver vazio.
 
-Se faltar dado, peça UM por vez.
+FLUXO:
+1. Não tem Nome? -> Pergunte o Nome.
+2. Tem Nome mas não tem Email? -> Pergunte o Email.
+3. Tem Nome e Email? -> Pergunte o WhatsApp.
+4. Tem tudo? -> Venda/Ajude.
+
+Se o usuário disser "não sei" ou estiver confuso, e você não tiver o nome dele, APRESENTE-SE E PEÇA O NOME.
 """
 
 if GROQ_API_KEY:
@@ -1496,10 +1502,10 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS (CORREÇÃO DE LOOP) ---
+# --- CHATBOT LELIS (CORRIGIDO PARA NÃO ALUCINAR) ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
-    print(f"\n--- [LELIS] Chat trigger (Groq Llama 3.3) ---")
+    print(f"\n--- [LELIS] Chat trigger ---")
     
     if not groq_client:
         return jsonify({'error': 'Serviço de IA Offline.'}), 503
@@ -1517,14 +1523,23 @@ def handle_chat():
         # --- INTELIGÊNCIA PARALELA (CAPTURA DE LEADS) ---
         if not current_user.is_authenticated:
             session_lead_id = session.get('temp_lead_id')
+            # Adicionei print para debug
+            print(f"📡 Processando mensagem: '{user_message}' | ID Sessão: {session_lead_id}")
+            
             new_lead_id = process_lead_data(user_message, session_lead_id)
-            if new_lead_id:
+            
+            if new_lead_id and new_lead_id != session_lead_id:
+                print(f"💾 DADOS SALVOS! Novo ID vinculado: {new_lead_id}")
                 session['temp_lead_id'] = new_lead_id
+            else:
+                print("⚠️ Nenhuma informação nova para salvar (ainda).")
         # ------------------------------------------------
 
-        # --- CORREÇÃO DO LOOP: INJETAR DADOS CONHECIDOS ---
+        # --- CONSTRUÇÃO DO PROMPT ---
         known_data = {}
         target_id = current_user.id if current_user.is_authenticated else session.get('temp_lead_id')
+
+        system_instruction = SYSTEM_PROMPT_LELIS
 
         if target_id and conn:
              try:
@@ -1533,33 +1548,36 @@ def handle_chat():
                  row = cur.fetchone()
                  if row:
                      known_data = row
+                     print(f"🧠 Contexto recuperado do DB: {known_data}")
              except Exception as db_err:
                  print(f"Erro ao ler contexto do chat: {db_err}")
 
-        system_instruction = SYSTEM_PROMPT_LELIS
+        # LÓGICA RÍGIDA DE INJEÇÃO DE CONTEXTO
         if known_data:
              system_instruction += f"\n\n[DADOS JÁ CAPTURADOS NO SISTEMA (NÃO PERGUNTE NOVAMENTE)]:"
              if known_data.get('name'): system_instruction += f"\n- Nome: {known_data['name']}"
              if known_data.get('email'): system_instruction += f"\n- Email: {known_data['email']}"
              if known_data.get('whatsapp'): system_instruction += f"\n- WhatsApp: {known_data['whatsapp']}"
+        else:
+             # AQUI ESTÁ O PULO DO GATO:
+             # Se não tem dados, avisamos explicitamente a IA que ela NÃO CONHECE o usuário.
+             system_instruction += f"\n\n[STATUS ATUAL]: VOCÊ NÃO TEM DADOS DESTE USUÁRIO. PERGUNTE O NOME."
+
         # -------------------------------------------------
 
-        # Construção do histórico para Groq (System + History)
         messages = [{"role": "system", "content": system_instruction}]
         
         for msg in history:
-            # Mapeia roles do frontend para a API (user/model -> user/assistant)
             role = 'user' if msg.get('user') == 'user' else 'assistant'
             messages.append({"role": role, "content": msg['text']})
 
-        # Garante que a última mensagem do usuário está no array
         if not history or history[-1]['text'] != user_message:
              messages.append({"role": "user", "content": user_message})
 
         completion = groq_client.chat.completions.create(
             messages=messages,
             model="llama-3.3-70b-versatile",
-            temperature=0.7,
+            temperature=0.5, # Reduzi temperatura para ele ser menos "criativo" e mais obediente
             max_tokens=250
         )
         
