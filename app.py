@@ -159,29 +159,30 @@ init_db()
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 groq_client = None
 
-# --- SYSTEM PROMPT DO LELIS (ATUALIZADO PARA CORRIGIR ALUCINAÇÃO) ---
+# --- SYSTEM PROMPT DO LELIS (BLINDADO - ORDEM RÍGIDA) ---
 SYSTEM_PROMPT_LELIS = """
-VOCÊ É: Lelis, da Leanttro Digital.
+VOCÊ É: Lelis, IA da Leanttro Digital.
 
 ESTILO (WHATSAPP MODE):
 - Respostas curtas (máx 2 frases).
 - Direto e informal (use emojis pontuais).
 - PROIBIDO textão.
 
-REGRA DE OURO (VERIFICAÇÃO DE DADOS):
-1. O SEU CONTEXTO É A VERDADE ABSOLUTA.
-2. Verifique o bloco '[DADOS JÁ CAPTURADOS NO SISTEMA]' abaixo.
-3. Se esse bloco NÃO existir ou estiver vazio: VOCÊ NÃO CONHECE O USUÁRIO.
-   -> NESSE CASO: Pergunte o nome dele IMEDIATAMENTE.
-   -> PROIBIDO dizer "já temos seus dados" se o bloco estiver vazio.
+MISSÃO CRÍTICA: Você DEVE capturar 3 DADOS (Nome, Email, WhatsApp) ANTES de falar sobre o projeto ou responder dúvidas.
 
-FLUXO:
-1. Não tem Nome? -> Pergunte o Nome.
-2. Tem Nome mas não tem Email? -> Pergunte o Email.
-3. Tem Nome e Email? -> Pergunte o WhatsApp.
-4. Tem tudo? -> Venda/Ajude.
+[ESTADO DOS DADOS - LEIA O BLOCO ABAIXO]:
+(O sistema injetará aqui o que já foi salvo no banco. Se faltar algo aqui, VOCÊ DEVE PEDIR).
 
-Se o usuário disser "não sei" ou estiver confuso, e você não tiver o nome dele, APRESENTE-SE E PEÇA O NOME.
+[FLUXO OBRIGATÓRIO - SIGA A ORDEM ESTRITA]:
+1. VERIFIQUE SE TEM NOME. Não tem? -> Pergunte o Nome. (Ignore qualquer outro assunto até ter o nome).
+2. VERIFIQUE SE TEM EMAIL. Não tem? -> Pergunte o Email.
+3. VERIFIQUE SE TEM WHATSAPP. Não tem? -> Pergunte o WhatsApp. (Diga: "Preciso do seu Zap pra validar o cadastro").
+4. TEM OS 3 DADOS? -> SÓ AGORA você pode responder dúvidas, vender sites ou dar consultoria.
+
+[COMPORTAMENTO]:
+- Se o usuário tentar falar do site mas ainda faltar o WhatsApp, diga: "Legal, vamos falar disso! Mas antes, digita seu WhatsApp pra eu deixar registrado?".
+- Se o dado já está no bloco 'DADOS JÁ CAPTURADOS', NUNCA PERGUNTE NOVAMENTE.
+- Seja simpático, mas firme na coleta de dados.
 """
 
 if GROQ_API_KEY:
@@ -472,7 +473,7 @@ def extract_days(value):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- FUNÇÃO: EXTRAÇÃO DE DADOS EM SEGUNDO PLANO (GROQ - JSON MODE) ---
+# --- FUNÇÃO: EXTRAÇÃO DE DADOS (CALIBRADA) ---
 def process_lead_data(user_message, session_lead_id=None):
     """
     Usa a Groq em modo JSON para extrair dados estruturados da mensagem
@@ -485,6 +486,13 @@ def process_lead_data(user_message, session_lead_id=None):
         # 1. Extração via IA (Groq JSON)
         extract_prompt = f"""
         Analise a mensagem do usuário: "{user_message}".
+        Identifique ENTIDADES para CRM.
+        
+        REGRAS ESPECÍFICAS:
+        1. Se houver um número como '11999998888' ou '(11) 9...', isso É O WHATSAPP.
+        2. Se houver email, extraia.
+        3. Se houver nome (e não for saudação), extraia.
+
         Extraia SOMENTE em JSON:
         {{
             "name": "nome se houver",
@@ -511,7 +519,8 @@ def process_lead_data(user_message, session_lead_id=None):
         data = json.loads(content)
         
         # Se não extraiu nada relevante, aborta para economizar DB
-        if not any(data.values()):
+        # Mas ignoramos 'temperatura' pq ela sempre vem preenchida
+        if not any(v for k,v in data.items() if k != 'temperatura'):
             return session_lead_id
 
         conn = get_db_connection()
@@ -544,7 +553,8 @@ def process_lead_data(user_message, session_lead_id=None):
             exists = cur.fetchone()
             if exists:
                 lead_id = exists['id']
-                process_lead_data(user_message, lead_id)
+                if db_pool: db_pool.putconn(conn) # Devolve antes da recursão
+                return process_lead_data(user_message, lead_id)
             else:
                 dummy_pass = generate_password_hash(str(uuid.uuid4()))
                 cur.execute("""
@@ -564,14 +574,14 @@ def process_lead_data(user_message, session_lead_id=None):
                 lead_id = cur.fetchone()['id']
                 conn.commit()
 
-        # Cenário C: Não temos ID e nem Email, mas temos Nome
-        elif data.get('name') and not lead_id:
+        # Cenário C: Não temos ID e nem Email, mas temos Nome ou Whats
+        elif (data.get('name') or data.get('whatsapp')) and not lead_id:
             dummy_pass = generate_password_hash(str(uuid.uuid4()))
             cur.execute("""
-                INSERT INTO clients (name, password_hash, status, temperatura, created_at)
-                VALUES (%s, %s, 'lead_provisorio', 'frio', NOW())
+                INSERT INTO clients (name, whatsapp, password_hash, status, temperatura, created_at)
+                VALUES (%s, %s, %s, 'lead_provisorio', 'frio', NOW())
                 RETURNING id
-            """, (data['name'], dummy_pass))
+            """, (data.get('name') or 'Visitante', data.get('whatsapp'), dummy_pass))
             lead_id = cur.fetchone()['id']
             conn.commit()
         
