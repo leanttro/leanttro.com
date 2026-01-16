@@ -169,10 +169,11 @@ ESTILO (WHATSAPP MODE):
 - PROIBIDO textão.
 
 FLUXO DE MEMÓRIA (ANTI-LOOP):
-1. LEIA O HISTÓRICO ANTES DE FALAR.
-2. Se o usuário já disse o NOME -> NÃO PERGUNTE DE NOVO. Pule para o Email.
-3. Se já tem NOME e EMAIL -> Pule para o WhatsApp.
-4. Se já tem tudo -> Venda.
+1. LEIA O BLOCO 'DADOS JÁ CAPTURADOS NO SISTEMA' ABAIXO.
+2. Se o dado (Nome, Email ou WhatsApp) já estiver lá, NÃO PERGUNTE DE NOVO.
+3. Se o usuário já disse o NOME -> Pule para o Email.
+4. Se já tem NOME e EMAIL -> Pule para o WhatsApp.
+5. Se já tem tudo -> Venda.
 
 Se faltar dado, peça UM por vez.
 """
@@ -1495,13 +1496,15 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS (REFATORADO PARA GROQ) ---
+# --- CHATBOT LELIS (CORREÇÃO DE LOOP) ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     print(f"\n--- [LELIS] Chat trigger (Groq Llama 3.3) ---")
     
     if not groq_client:
         return jsonify({'error': 'Serviço de IA Offline.'}), 503
+
+    conn = get_db_connection()
 
     try:
         data = request.json
@@ -1519,16 +1522,37 @@ def handle_chat():
                 session['temp_lead_id'] = new_lead_id
         # ------------------------------------------------
 
+        # --- CORREÇÃO DO LOOP: INJETAR DADOS CONHECIDOS ---
+        known_data = {}
+        target_id = current_user.id if current_user.is_authenticated else session.get('temp_lead_id')
+
+        if target_id and conn:
+             try:
+                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                 cur.execute("SELECT name, email, whatsapp FROM clients WHERE id = %s", (target_id,))
+                 row = cur.fetchone()
+                 if row:
+                     known_data = row
+             except Exception as db_err:
+                 print(f"Erro ao ler contexto do chat: {db_err}")
+
+        system_instruction = SYSTEM_PROMPT_LELIS
+        if known_data:
+             system_instruction += f"\n\n[DADOS JÁ CAPTURADOS NO SISTEMA (NÃO PERGUNTE NOVAMENTE)]:"
+             if known_data.get('name'): system_instruction += f"\n- Nome: {known_data['name']}"
+             if known_data.get('email'): system_instruction += f"\n- Email: {known_data['email']}"
+             if known_data.get('whatsapp'): system_instruction += f"\n- WhatsApp: {known_data['whatsapp']}"
+        # -------------------------------------------------
+
         # Construção do histórico para Groq (System + History)
-        messages = [{"role": "system", "content": SYSTEM_PROMPT_LELIS}]
+        messages = [{"role": "system", "content": system_instruction}]
         
         for msg in history:
             # Mapeia roles do frontend para a API (user/model -> user/assistant)
             role = 'user' if msg.get('user') == 'user' else 'assistant'
             messages.append({"role": role, "content": msg['text']})
 
-        # Garante que a última mensagem do usuário está no array (caso o frontend não tenha enviado no history)
-        # Se a última do history já for o user_message, ok. Senão, adiciona.
+        # Garante que a última mensagem do usuário está no array
         if not history or history[-1]['text'] != user_message:
              messages.append({"role": "user", "content": user_message})
 
@@ -1546,6 +1570,9 @@ def handle_chat():
         print(f"❌ ERRO CHAT: {e}")
         traceback.print_exc()
         return jsonify({'reply': "Minha conexão caiu... 🔌 Chama no WhatsApp?"}), 200
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 @app.route('/api/briefing/chat', methods=['POST'])
 @login_required
