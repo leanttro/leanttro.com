@@ -473,12 +473,11 @@ def extract_days(value):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- FUNÇÃO: EXTRAÇÃO DE DADOS (CORRIGIDA - SEM RECURSÃO) ---
+# --- FUNÇÃO: EXTRAÇÃO DE DADOS (CALIBRADA) ---
 def process_lead_data(user_message, session_lead_id=None):
     """
     Usa a Groq em modo JSON para extrair dados estruturados da mensagem
     e atualizar o banco de dados 'clients' em tempo real.
-    CORREÇÃO: Removida recursão para evitar PoolError.
     """
     conn = None 
     try:
@@ -520,6 +519,7 @@ def process_lead_data(user_message, session_lead_id=None):
         data = json.loads(content)
         
         # Se não extraiu nada relevante, aborta para economizar DB
+        # Mas ignoramos 'temperatura' pq ela sempre vem preenchida
         if not any(v for k,v in data.items() if k != 'temperatura'):
             return session_lead_id
 
@@ -530,48 +530,14 @@ def process_lead_data(user_message, session_lead_id=None):
         
         lead_id = session_lead_id
         
-        # 2. RESOLUÇÃO DE IDENTIDADE (Lógica Linear)
+        # 2. Lógica de Upsert
         
-        # Se ainda não temos ID, tentamos achar pelo Email ou criar novo
-        if not lead_id:
-            if data.get('email'):
-                cur.execute("SELECT id FROM clients WHERE email = %s", (data['email'],))
-                exists = cur.fetchone()
-                if exists:
-                    lead_id = exists['id']
-                else:
-                    # Cria novo com todos os dados que temos
-                    dummy_pass = generate_password_hash(str(uuid.uuid4()))
-                    cur.execute("""
-                        INSERT INTO clients (name, email, whatsapp, company_name, cargo, temperatura, dor_principal, password_hash, status, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'lead', NOW())
-                        RETURNING id
-                    """, (
-                        data.get('name') or 'Lead Sem Nome', data.get('email'), data.get('whatsapp'),
-                        data.get('company_name'), data.get('cargo'), data.get('temperatura') or 'frio',
-                        data.get('dor_principal'), dummy_pass
-                    ))
-                    lead_id = cur.fetchone()['id']
-                    conn.commit()
-            
-            # Se não temos email, mas temos nome ou whats -> Cria provisório
-            elif data.get('name') or data.get('whatsapp'):
-                dummy_pass = generate_password_hash(str(uuid.uuid4()))
-                cur.execute("""
-                    INSERT INTO clients (name, whatsapp, password_hash, status, temperatura, created_at)
-                    VALUES (%s, %s, %s, 'lead_provisorio', 'frio', NOW())
-                    RETURNING id
-                """, (data.get('name') or 'Visitante', data.get('whatsapp'), dummy_pass))
-                lead_id = cur.fetchone()['id']
-                conn.commit()
-
-        # 3. ATUALIZAÇÃO (UPSERT)
-        # Agora que temos um lead_id (seja novo ou recuperado), atualizamos os campos vazios
+        # Cenário A: Temos um ID de sessão
         if lead_id:
             fields = []
             values = []
             for k, v in data.items():
-                if v and k != 'temperatura': # Temperatura ignoramos aqui pra não sobrescrever
+                if v:
                     fields.append(f"{k} = %s")
                     values.append(v)
             
@@ -581,6 +547,46 @@ def process_lead_data(user_message, session_lead_id=None):
                 cur.execute(sql, tuple(values))
                 conn.commit()
 
+        # Cenário B: Não temos ID, mas o usuário deu Email agora
+        elif data.get('email'):
+            cur.execute("SELECT id FROM clients WHERE email = %s", (data['email'],))
+            exists = cur.fetchone()
+            if exists:
+                lead_id = exists['id']
+                if db_pool: 
+                    db_pool.putconn(conn)
+                conn = None # <--- CORREÇÃO AQUI: ANULA A CONEXÃO PARA O FINALLY NÃO DAR ERRO
+                return process_lead_data(user_message, lead_id)
+            else:
+                dummy_pass = generate_password_hash(str(uuid.uuid4()))
+                cur.execute("""
+                    INSERT INTO clients (name, email, whatsapp, company_name, cargo, temperatura, dor_principal, password_hash, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'lead', NOW())
+                    RETURNING id
+                """, (
+                    data.get('name') or 'Lead Sem Nome',
+                    data.get('email'),
+                    data.get('whatsapp'),
+                    data.get('company_name'),
+                    data.get('cargo'),
+                    data.get('temperatura') or 'frio',
+                    data.get('dor_principal'),
+                    dummy_pass
+                ))
+                lead_id = cur.fetchone()['id']
+                conn.commit()
+
+        # Cenário C: Não temos ID e nem Email, mas temos Nome ou Whats
+        elif (data.get('name') or data.get('whatsapp')) and not lead_id:
+            dummy_pass = generate_password_hash(str(uuid.uuid4()))
+            cur.execute("""
+                INSERT INTO clients (name, whatsapp, password_hash, status, temperatura, created_at)
+                VALUES (%s, %s, %s, 'lead_provisorio', 'frio', NOW())
+                RETURNING id
+            """, (data.get('name') or 'Visitante', data.get('whatsapp'), dummy_pass))
+            lead_id = cur.fetchone()['id']
+            conn.commit()
+        
         return lead_id
 
     except Exception as e:
