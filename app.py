@@ -525,6 +525,7 @@ def process_lead_data(user_message, session_lead_id=None):
     Usa uma chamada rápida de IA para extrair dados estruturados da mensagem
     e atualizar o banco de dados 'clients' em tempo real.
     """
+    conn = None # CORREÇÃO: Inicializa conn aqui para evitar UnboundLocalError
     try:
         # 1. Extração via IA
         extract_prompt = f"""
