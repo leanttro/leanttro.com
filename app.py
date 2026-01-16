@@ -163,10 +163,36 @@ if GEMINI_KEY:
             SELECTED_MODEL_NAME = found_model
             print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
 
+        # --- CÉREBRO DO LELIS ATUALIZADO (INCLUINDO LOJA VIRTUAL) ---
         SYSTEM_PROMPT_LELIS = """
         VOCÊ É: Lelis, Consultor Executivo da Leanttro Digital.
         SUA MISSÃO: Fechar contratos de alto valor passando autoridade e segurança técnica.
         TOM: Profissional, Seguro, Educado e Direto. Não use gírias.
+
+        --- SEU CATÁLOGO DE SOLUÇÕES (Use estas chaves para classificar) ---
+        
+        1. LOGÍSTICA (leanttro_stock): Para quem perde material ou tem estoque bagunçado. 
+           > Killer Feature: IA no WhatsApp ("Onde está a peça X?").
+           
+        2. GRÁFICA (leanttro_print): Para quem sofre com aprovação de arte e erro de cor.
+           > Killer Feature: Editor Canvas Web embutido.
+           
+        3. RH/OPERAÇÕES (leanttro_ops): Para empresas com horas extras descontroladas e risco trabalhista.
+           > Killer Feature: Bloqueio de ponto retroativo e fluxo hierárquico.
+           
+        4. EVENTOS (leanttro_eventos): Casamentos e festas (Divide o Pix).
+           > Killer Feature: Lista de presentes converte em PIX (Cash-out).
+           
+        5. INSTITUCIONAL (leanttro_web): Site rápido e barato.
+        
+        6. LOJA VIRTUAL / E-COMMERCE (leanttro_store): 
+           > GATILHO: Cliente quer vender online, reclama de lentidão no WooCommerce ou site atual caindo.
+           > ARGUMENTO: "Nossas lojas usam tecnologia Headless (API + Frontend Puro). Carrega em 0.5s. Veja nosso case de Autopeças (Filtro de Carro + Carrinho Instantâneo)."
+           > OFERTA: Integração com WhatsApp e Estoque.
+
+        --- INSTRUÇÃO DE RESPOSTA ---
+        Se o cliente falar de Vendas Online, Peças ou Loja, venda o LEANTTRO STORE.
+        Ao final de CADA resposta, se identificar uma oportunidade, tente extrair o email ou zap.
         """
         
         try:
@@ -278,6 +304,7 @@ def ensure_future_invoices(client_id):
         monthly_price = 0.0
         
         # 2. Busca Preço (Order -> Product)
+        # ATENÇÃO: Mapeamento de campos corrigido para usar price_monthly
         cur.execute("""
             SELECT o.total_monthly, p.price_monthly, o.created_at as order_date 
             FROM orders o
@@ -955,6 +982,7 @@ def get_catalog():
         return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # ATENÇÃO: Campos corrigidos conforme solicitação (name, price_setup, price_monthly)
         cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
         products = cur.fetchall()
         
@@ -967,8 +995,10 @@ def get_catalog():
             
             catalog[p['slug']] = {
                 "id": p['id'],
+                # Mapeia 'name' do banco para 'title' da API
                 "title": p['name'],
                 "desc": p['description'],
+                # Mapeia 'price_setup' e 'price_monthly' corretamente
                 "baseSetup": float(p['price_setup']),
                 "baseMonthly": float(p['price_monthly']),
                 "prazoBase": prazo_prod,
@@ -1025,6 +1055,7 @@ def download_contract_real():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
         # Query atualizada para pegar addons e slug do produto
+        # ATENÇÃO: Correção no JOIN de products (name, slug)
         cur.execute("""
             SELECT c.name, c.document, c.email,
                    p.name as product_name, p.slug as product_slug,
