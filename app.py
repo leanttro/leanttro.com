@@ -11,13 +11,13 @@ from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import google.generativeai as genai
+from groq import Groq  # ALTERAÇÃO: Importação da Groq
 import mercadopago
 from dotenv import load_dotenv
 import traceback
-import uuid # Novo import para senha dummy
+import uuid 
 
-# --- NOVAS IMPORTAÇÕES PARA EMAIL ---
+# --- IMPORTAÇÕES PARA EMAIL ---
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -47,7 +47,7 @@ DB_URL = os.getenv('DATABASE_URL')
 MP_ACCESS_TOKEN = os.getenv('MP_ACCESS_TOKEN')
 DIRECTUS_ASSETS_URL = "https://api.leanttro.com/assets/"
 COMPANY_CNPJ = "63.556.406/0001-75"
-BASE_URL = os.getenv('APP_BASE_URL', 'https://leanttro.com') # Ajuste se necessário
+BASE_URL = os.getenv('APP_BASE_URL', 'https://leanttro.com')
 
 # --- CONFIGURAÇÃO SMTP (EMAIL) ---
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")
@@ -138,7 +138,7 @@ def init_db():
                     try:
                         cur.execute(sql)
                     except:
-                        pass # Ignora se já existir ou erro de permissão
+                        pass 
 
                 conn.commit()
                 print("✅ [SISTEMA] Tabelas verificadas/criadas com sucesso.")
@@ -155,74 +155,36 @@ def init_db():
 # INICIA O BANCO IMEDIATAMENTE
 init_db()
 
-# --- CONFIGURAÇÃO GEMINI (AUTO-DETECT) ---
-GEMINI_KEY = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
-chat_model = None
-SELECTED_MODEL_NAME = "gemini-pro"
+# --- CONFIGURAÇÃO GROQ (SUBSTITUIÇÃO DO GEMINI) ---
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+groq_client = None
 
-if GEMINI_KEY:
+# --- SYSTEM PROMPT DO LELIS (ATUALIZADO) ---
+SYSTEM_PROMPT_LELIS = """
+VOCÊ É: Lelis, da Leanttro Digital.
+
+ESTILO (WHATSAPP MODE):
+- Respostas curtas (máx 2 frases).
+- Direto e informal (use emojis pontuais).
+- PROIBIDO textão.
+
+FLUXO DE MEMÓRIA (ANTI-LOOP):
+1. LEIA O HISTÓRICO ANTES DE FALAR.
+2. Se o usuário já disse o NOME -> NÃO PERGUNTE DE NOVO. Pule para o Email.
+3. Se já tem NOME e EMAIL -> Pule para o WhatsApp.
+4. Se já tem tudo -> Venda.
+
+Se faltar dado, peça UM por vez.
+"""
+
+if GROQ_API_KEY:
     try:
-        genai.configure(api_key=GEMINI_KEY)
-        
-        print("\n========== [DIAGNÓSTICO DE MODELOS] ==========")
-        found_model = None
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    clean_name = m.name.replace('models/', '')
-                    if not found_model: found_model = clean_name
-        except Exception as e_list:
-            print(f"Erro listar modelos: {e_list}")
-
-        if found_model:
-            SELECTED_MODEL_NAME = found_model
-            print(f"🎯 MODELO SELECIONADO: {SELECTED_MODEL_NAME}")
-
-        # --- CÉREBRO DO LELIS ATUALIZADO (MODO ZAP / CRM HUNTER) ---
-        SYSTEM_PROMPT_LELIS = """
-        VOCÊ É: Lelis, da Leanttro Digital.
-
-        ESTILO OBRIGATÓRIO (WHATSAPP MODE):
-        - MENSAGENS CURTAS: Máximo 2 frases por vez.
-        - DIRETO: Sem rodeios, sem formalidade excessiva.
-        - CASUAL: Use emojis pontuais, linguagem simples.
-        - PROIBIDO: Textão, listas longas, explicar coisas que não perguntaram.
-
-        OBJETIVO: Pegar os dados (Nome, Email, Zap) para o CRM e vender.
-
-        REGRAS DE FLUXO (MEMÓRIA ATIVA):
-        1. CHECAGEM DE HISTÓRICO: Antes de responder, OLHE o histórico da conversa.
-           - Se o usuário já falou o NOME -> NÃO pergunte de novo. Pule para o EMAIL.
-           - Se já tem NOME e EMAIL -> Pule para o WHATSAPP.
-           - Se já tem TUDO -> Foque em entender a dor ou vender.
-        
-        2. DADOS FALTANTES (Pergunte UM por vez):
-           - "Opa, tudo bem? Com quem eu falo?" (Se não tiver nome)
-           - "Prazer, [Nome]! Me passa seu email pra eu te mandar uns exemplos?" (Se tiver nome, mas sem email)
-           - "E seu whatsapp? Assim a gente agiliza." (Se tiver nome/email, mas sem zap)
-
-        SEU CATÁLOGO (Resuma):
-        - IA/Estoque -> leanttro_stock
-        - Sites/Apps -> leanttro_web
-        - E-commerce -> leanttro_store
-        
-        COMPORTAMENTO:
-        Aja como uma pessoa respondendo no celular. Rápido e prático.
-        """
-        
-        try:
-            chat_model = genai.GenerativeModel(
-                SELECTED_MODEL_NAME,
-                system_instruction=SYSTEM_PROMPT_LELIS
-            )
-        except:
-            print("⚠️ Fallback: Iniciando Gemini sem System Prompt.")
-            chat_model = genai.GenerativeModel(SELECTED_MODEL_NAME)
-            
+        groq_client = Groq(api_key=GROQ_API_KEY)
+        print("🎯 GROQ CLIENTE INICIALIZADO (Llama 3.3 70b)")
     except Exception as e:
-        print(f"❌ Erro Gemini: {e}")
+        print(f"❌ Erro ao iniciar Groq: {e}")
 else:
-    print("❌ Nenhuma API Key do Google encontrada.")
+    print("❌ Nenhuma API Key da Groq encontrada.")
 
 
 mp_sdk = mercadopago.SDK(MP_ACCESS_TOKEN) if MP_ACCESS_TOKEN else None
@@ -292,18 +254,15 @@ def enviar_email(destinatario, link_recuperacao):
         print(f"❌ Erro ao enviar e-mail: {e}")
         return False
 
-# --- FUNÇÃO: GARANTIR FATURAS FUTURAS (DIA 10 + 30 DIAS GRÁTIS) ---
+# --- FUNÇÃO: GARANTIR FATURAS FUTURAS ---
 def ensure_future_invoices(client_id):
-    """
-    Garante que o cliente tenha as próximas 12 mensalidades geradas.
-    """
+    """Garante que o cliente tenha as próximas 12 mensalidades geradas."""
     conn = get_db_connection()
     if not conn:
         return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # 1. Garante que a tabela existe (Redundância de segurança)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
                 id SERIAL PRIMARY KEY,
@@ -318,8 +277,6 @@ def ensure_future_invoices(client_id):
         
         monthly_price = 0.0
         
-        # 2. Busca Preço (Order -> Product)
-        # ATENÇÃO: Mapeamento de campos corrigido para usar price_monthly
         cur.execute("""
             SELECT o.total_monthly, p.price_monthly, o.created_at as order_date 
             FROM orders o
@@ -329,13 +286,12 @@ def ensure_future_invoices(client_id):
         """, (client_id,))
         orders = cur.fetchall()
         
-        first_order_date = date.today() # Fallback padrão
+        first_order_date = date.today()
         
         for o in orders:
             val_order = float(o.get('total_monthly') or 0)
             val_product = float(o.get('price_monthly') or 0)
             
-            # Pega a data da primeira compra válida
             if o.get('order_date'):
                 first_order_date = o['order_date'].date()
             
@@ -344,22 +300,17 @@ def ensure_future_invoices(client_id):
                 break
             elif val_product > 0:
                 monthly_price = val_product
-                print(f"⚠️ Usando preço do produto vinculado: R$ {monthly_price}")
                 break
         
-        # 3. FALLBACK DE ÚLTIMO CASO: Pega qualquer produto ativo
         if monthly_price <= 0:
-            print(f"⚠️ Cliente {client_id}: Preço não encontrado. Buscando padrão...")
             cur.execute("SELECT price_monthly FROM products WHERE is_active = TRUE AND price_monthly > 0 LIMIT 1")
             default_prod = cur.fetchone()
             if default_prod:
                 monthly_price = float(default_prod['price_monthly'])
 
         if monthly_price <= 0:
-            print(f"❌ IMPOSSÍVEL DEFINIR PREÇO PARA CLIENTE {client_id}")
             return
 
-        # 4. Verifica e cria faturas
         cur.execute("SELECT COUNT(*) as c FROM invoices WHERE client_id = %s AND status = 'pending'", (client_id,))
         count_pending = cur.fetchone()['c']
         
@@ -370,17 +321,13 @@ def ensure_future_invoices(client_id):
             last_inv = cur.fetchone()
             
             if last_inv:
-                # Se já tem fatura, continua a sequência normalmente
                 last_date = last_inv['due_date']
                 start_month = last_date.month
                 start_year = last_date.year
             else:
-                # --- LÓGICA DE 1 MÊS GRÁTIS ---
                 free_until = first_order_date + timedelta(days=30)
-                
                 target_due_date = date(free_until.year, free_until.month, 10)
                 
-                # Se o dia 10 desse mês já passou (ou é antes do fim do período grátis), pula para o próximo mês
                 if target_due_date < free_until:
                     if target_due_date.month == 12:
                         target_due_date = date(target_due_date.year + 1, 1, 10)
@@ -410,7 +357,6 @@ def ensure_future_invoices(client_id):
                     """, (client_id, monthly_price, due_dt))
             
             conn.commit()
-            print(f"✅ Geradas {needed} faturas de R$ {monthly_price} para cliente {client_id} (Início: {start_month+1}/{start_year})")
 
     except Exception as e:
         print(f"❌ ERRO CRÍTICO FATURAS: {e}")
@@ -438,7 +384,6 @@ def get_financial_dashboard(client_id):
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Pega todas as pendentes ordenadas por data
         cur.execute("""
             SELECT id, amount, due_date, status 
             FROM invoices 
@@ -461,7 +406,7 @@ def get_financial_dashboard(client_id):
                 "class": "text-white"
             }
             
-            if delta > 3: # 3 dias de tolerância
+            if delta > 3:
                 info["status_global"] = "overdue"
                 info["message"] = "BLOQUEADO (FATURA ATRASADA)"
                 inv_data["status_label"] = "ATRASADO"
@@ -472,16 +417,14 @@ def get_financial_dashboard(client_id):
                 inv_data["status_label"] = "VENCE HOJE"
                 inv_data["class"] = "text-yellow-500 font-bold"
             else:
-                # Fatura futura (adiantamento)
                 inv_data["status_label"] = "EM ABERTO (FUTURA)"
                 inv_data["class"] = "text-gray-400"
 
             info["invoices"].append(inv_data)
             info["total_pending"] += float(inv['amount'])
 
-        # Calcula totais para o plano anual
         if info["total_pending"] > 0:
-            info["total_annual_discounted"] = info["total_pending"] * 0.90 # 10% OFF
+            info["total_annual_discounted"] = info["total_pending"] * 0.90
             info["annual_savings"] = info["total_pending"] - info["total_annual_discounted"]
 
     except Exception as e:
@@ -503,7 +446,6 @@ def load_user(user_id):
         u = cur.fetchone()
         if u:
             role = 'admin' if u.get('status') == 'admin' else 'user'
-            # ATUALIZAÇÃO: Passa o status para a classe User
             return User(u['id'], u['name'], u['email'], role, u['status'])
         return None
     except Exception as e:
@@ -523,15 +465,17 @@ def extract_days(value):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- FUNÇÃO: EXTRAÇÃO DE DADOS EM SEGUNDO PLANO (HUNTER MODE) ---
+# --- FUNÇÃO: EXTRAÇÃO DE DADOS EM SEGUNDO PLANO (GROQ - JSON MODE) ---
 def process_lead_data(user_message, session_lead_id=None):
     """
-    Usa uma chamada rápida de IA para extrair dados estruturados da mensagem
+    Usa a Groq em modo JSON para extrair dados estruturados da mensagem
     e atualizar o banco de dados 'clients' em tempo real.
     """
-    conn = None # CORREÇÃO: Inicializa conn aqui para evitar UnboundLocalError
+    conn = None 
     try:
-        # 1. Extração via IA
+        if not groq_client: return session_lead_id
+
+        # 1. Extração via IA (Groq JSON)
         extract_prompt = f"""
         Analise a mensagem do usuário: "{user_message}".
         Extraia SOMENTE em JSON:
@@ -544,11 +488,20 @@ def process_lead_data(user_message, session_lead_id=None):
             "temperatura": "quente ou frio (baseado no interesse)",
             "dor_principal": "resumo do problema citado"
         }}
-        Se não tiver a info, use null.
+        Se não tiver a info, use null. NÃO ADICIONE TEXTO EXTRA, APENAS O JSON.
         """
-        model = genai.GenerativeModel("gemini-pro")
-        resp = model.generate_content(extract_prompt)
-        data = json.loads(resp.text.replace('```json','').replace('```',''))
+        
+        completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a specialized JSON data extractor."},
+                {"role": "user", "content": extract_prompt}
+            ],
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"}
+        )
+        
+        content = completion.choices[0].message.content
+        data = json.loads(content)
         
         # Se não extraiu nada relevante, aborta para economizar DB
         if not any(data.values()):
@@ -561,11 +514,10 @@ def process_lead_data(user_message, session_lead_id=None):
         
         lead_id = session_lead_id
         
-        # 2. Lógica de Upsert (Salvar um por um)
+        # 2. Lógica de Upsert
         
-        # Cenário A: Temos um ID de sessão (Lead já começou a falar)
+        # Cenário A: Temos um ID de sessão
         if lead_id:
-            # Constrói query dinâmica de update apenas com campos não nulos
             fields = []
             values = []
             for k, v in data.items():
@@ -579,17 +531,14 @@ def process_lead_data(user_message, session_lead_id=None):
                 cur.execute(sql, tuple(values))
                 conn.commit()
 
-        # Cenário B: Não temos ID, mas o usuário deu Email agora (Vira lead oficial)
+        # Cenário B: Não temos ID, mas o usuário deu Email agora
         elif data.get('email'):
-            # Verifica se já existe
             cur.execute("SELECT id FROM clients WHERE email = %s", (data['email'],))
             exists = cur.fetchone()
             if exists:
                 lead_id = exists['id']
-                # Atualiza dados extras
-                process_lead_data(user_message, lead_id) # Recursivo para update
+                process_lead_data(user_message, lead_id)
             else:
-                # Cria novo lead completo
                 dummy_pass = generate_password_hash(str(uuid.uuid4()))
                 cur.execute("""
                     INSERT INTO clients (name, email, whatsapp, company_name, cargo, temperatura, dor_principal, password_hash, status, created_at)
@@ -608,10 +557,9 @@ def process_lead_data(user_message, session_lead_id=None):
                 lead_id = cur.fetchone()['id']
                 conn.commit()
 
-        # Cenário C: Não temos ID e nem Email, mas temos Nome (Lead frio iniciando)
+        # Cenário C: Não temos ID e nem Email, mas temos Nome
         elif data.get('name') and not lead_id:
             dummy_pass = generate_password_hash(str(uuid.uuid4()))
-            # Cria lead provisório só com nome
             cur.execute("""
                 INSERT INTO clients (name, password_hash, status, temperatura, created_at)
                 VALUES (%s, %s, 'lead_provisorio', 'frio', NOW())
@@ -619,8 +567,6 @@ def process_lead_data(user_message, session_lead_id=None):
             """, (data['name'], dummy_pass))
             lead_id = cur.fetchone()['id']
             conn.commit()
-
-        # Cenário D: Apenas conversa solta, sem dados identificáveis -> não salva nada ainda
         
         return lead_id
 
@@ -652,7 +598,6 @@ def login_page():
 @app.route('/briefing')
 @login_required
 def briefing_page():
-    # Se status for pendente, joga pro Admin pagar o setup
     if current_user.status == 'pendente':
         return redirect(url_for('admin_page'))
 
@@ -660,7 +605,6 @@ def briefing_page():
     try:
         cur = conn.cursor()
         cur.execute("SELECT id FROM briefings WHERE client_id = %s", (current_user.id,))
-        # Se já tiver briefing (mesmo skipped), não acessa mais essa tela
         if cur.fetchone():
             return redirect(url_for('admin_page'))
     finally:
@@ -684,8 +628,8 @@ def admin_page():
         "setup_order_id": None,
         "setup_value": 0.0,
         "available_addons": [],
-        "url_versao": None, # NOVO: Para linkar V1.0
-        "is_skipped": False # NOVO: Para saber se pulou etapa
+        "url_versao": None,
+        "is_skipped": False
     }
     
     try:
@@ -700,7 +644,6 @@ def admin_page():
                 cur.execute("SELECT COALESCE(SUM(total_setup), 0) FROM orders WHERE payment_status = 'approved'")
                 stats["revenue"] = float(cur.fetchone()[0])
             
-            # VERIFICA SETUP PENDENTE (LOGIN LIBERADO MAS BLOQUEADO)
             cur.execute("""
                 SELECT id, total_setup FROM orders 
                 WHERE client_id = %s AND payment_status = 'pending' 
@@ -713,7 +656,6 @@ def admin_page():
                 stats['setup_order_id'] = pending_order['id']
                 stats['setup_value'] = float(pending_order['total_setup'])
             
-            # CARREGA ADDONS
             try:
                 cur.execute("SELECT id, name, price_setup, price_monthly, description FROM addons")
                 stats['available_addons'] = [dict(a) for a in cur.fetchall()]
@@ -721,7 +663,6 @@ def admin_page():
                 print(f"Erro ao carregar addons: {e_addon}")
                 stats['available_addons'] = []
 
-            # ATUALIZADO: Traz url_versao e verifica status skipped
             cur.execute("""
                 SELECT status, revisoes_restantes, colors, style_preference, site_sections, url_versao
                 FROM briefings WHERE client_id = %s
@@ -776,11 +717,9 @@ def api_login():
         if user_data and user_data['password_hash']:
             if check_password_hash(user_data['password_hash'], password):
                 
-                # ALTERADO: Permitimos login mesmo com status pendente para ele poder pagar
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'], 'user', user_data['status'])
                 login_user(user_obj)
                 
-                # Se for pendente, vai pro admin pagar
                 if user_data['status'] == 'pendente':
                     return jsonify({"message": "Redirecionando para pagamento", "redirect": "/admin"})
 
@@ -796,7 +735,6 @@ def api_login():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVA ROTA: SOLICITAR RESET DE SENHA (EMAIL) ---
 @app.route('/api/request_reset', methods=['POST'])
 def request_reset():
     email = request.json.get('email')
@@ -810,17 +748,13 @@ def request_reset():
         user_data = cur.fetchone()
         
         if not user_data:
-            # Retorna sucesso falso por segurança
             return jsonify({"status": "success", "message": "Se o e-mail existir, um link foi enviado."})
 
-        # Gera token seguro
         s = URLSafeTimedSerializer(app.secret_key)
         token = s.dumps(email, salt='recover-key')
         
-        # Gera o link
         reset_link = f"{BASE_URL}/login?reset_token={token}"
         
-        # Envia e-mail
         enviado = enviar_email(email, reset_link)
         
         if enviado:
@@ -832,7 +766,6 @@ def request_reset():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVA ROTA: CONFIRMAR RESET DE SENHA ---
 @app.route('/api/reset_password_confirm', methods=['POST'])
 def reset_password_confirm():
     token = request.json.get('token')
@@ -843,7 +776,7 @@ def reset_password_confirm():
 
     s = URLSafeTimedSerializer(app.secret_key)
     try:
-        email = s.loads(token, salt='recover-key', max_age=3600) # 1 hora de validade
+        email = s.loads(token, salt='recover-key', max_age=3600)
     except:
         return jsonify({"message": "Link inválido ou expirado."}), 400
 
@@ -866,7 +799,6 @@ def reset_password_confirm():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVO: PAGAR SETUP PENDENTE (RECUPERAÇÃO) ---
 @app.route('/api/pay_setup', methods=['POST'])
 @login_required
 def pay_setup():
@@ -882,7 +814,6 @@ def pay_setup():
         if not order:
             return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
-        # --- VALOR REAL (OFICIAL) ---
         unit_price = float(order['total_setup'])
 
         preference_data = {
@@ -898,7 +829,6 @@ def pay_setup():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVO: COMPRAR ADDON (UPGRADE) ---
 @app.route('/api/buy_addon', methods=['POST'])
 @login_required
 def buy_addon():
@@ -912,7 +842,6 @@ def buy_addon():
         if not addon:
             return jsonify({"error": "Item inválido"}), 400
 
-        # Cria um pedido avulso só para o addon
         cur.execute("""
             INSERT INTO orders (client_id, product_id, selected_addons, total_setup, total_monthly, payment_status, created_at)
             VALUES (%s, NULL, %s, %s, %s, 'pending', NOW())
@@ -921,7 +850,6 @@ def buy_addon():
         new_order_id = cur.fetchone()['id']
         conn.commit()
 
-        # --- VALOR REAL (OFICIAL) ---
         unit_price = float(addon['price_setup'])
 
         preference_data = {
@@ -939,11 +867,9 @@ def buy_addon():
 @app.route('/api/briefing/update', methods=['POST'])
 @login_required
 def update_briefing():
-    # --- BLOQUEIO FINANCEIRO ---
-    fin_status = get_financial_dashboard(current_user.id) # Usa a função nova
+    fin_status = get_financial_dashboard(current_user.id)
     if fin_status['status_global'] == 'overdue':
         return jsonify({"error": "Acesso bloqueado por pendência financeira. Regularize para editar."}), 403
-    # ---------------------------
 
     data = request.json
     colors = data.get('colors')
@@ -966,7 +892,6 @@ def update_briefing():
         if revisoes <= 0:
             return jsonify({"error": "Limite de alterações atingido."}), 403
 
-        # Se estava skipped e o usuário atualizou, muda para ativo
         novo_status = 'ativo' if status_atual == 'skipped' else status_atual
 
         cur.execute("""
@@ -985,14 +910,12 @@ def update_briefing():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVA ROTA: SKIP BRIEFING (PULAR ETAPA) ---
 @app.route('/api/briefing/skip', methods=['POST'])
 @login_required
 def skip_briefing():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        # Insere um briefing placeholder com status skipped
         cur.execute("""
             INSERT INTO briefings (client_id, colors, style_preference, site_sections, uploaded_files, ai_generated_prompt, status, revisoes_restantes)
             VALUES (%s, 'Pendente', 'Pendente (Pulado)', 'Pendente (Pulado)', '', 'User skipped briefing', 'skipped', 3)
@@ -1007,7 +930,6 @@ def skip_briefing():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVA ROTA: GERAR PIX MENSALIDADE ÚNICA ---
 @app.route('/api/pay_monthly', methods=['POST'])
 @login_required
 def pay_monthly():
@@ -1020,17 +942,14 @@ def pay_monthly():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Valida se a fatura pertence ao usuário e está pendente
         cur.execute("SELECT id, amount, due_date FROM invoices WHERE id = %s AND client_id = %s AND status = 'pending'", (invoice_id, current_user.id))
         invoice = cur.fetchone()
         
         if not invoice:
             return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
-        # --- VALOR REAL (OFICIAL) ---
         unit_price = float(invoice['amount'])
 
-        # Cria Preferência MP
         preference_data = {
             "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {
@@ -1044,7 +963,6 @@ def pay_monthly():
             "external_reference": f"INV-{invoice['id']}" 
         }
 
-        # Criação focada em PIX
         pref = mp_sdk.preference().create(preference_data)
         
         return jsonify({
@@ -1058,7 +976,6 @@ def pay_monthly():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- NOVA ROTA: PAGAMENTO ANUAL (TODOS OS PENDENTES COM DESCONTO) ---
 @app.route('/api/pay_annual', methods=['POST'])
 @login_required
 def pay_annual():
@@ -1071,10 +988,8 @@ def pay_annual():
     if total_discounted <= 0:
         return jsonify({"error": "Não há débitos pendentes."}), 400
 
-    # --- VALOR REAL (OFICIAL) ---
     unit_price = float(f"{total_discounted:.2f}")
 
-    # Cria Preferência MP com valor cheio (soma com desconto)
     preference_data = {
         "items": [{"id": "ANNUAL", 
             "title": f"Antecipação Anual Leanttro - {len(fin['invoices'])} Parcelas", 
@@ -1090,7 +1005,7 @@ def pay_annual():
             "excluded_payment_types": [{"id": "credit_card"}],
             "installments": 1
         },
-        "external_reference": f"ANNUAL-{current_user.id}" # Referência especial para o Webhook saber que é tudo
+        "external_reference": f"ANNUAL-{current_user.id}" 
     }
     
     try:
@@ -1107,7 +1022,6 @@ def get_catalog():
         return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # ATENÇÃO: Campos corrigidos conforme solicitação (name, price_setup, price_monthly)
         cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
         products = cur.fetchall()
         
@@ -1120,10 +1034,8 @@ def get_catalog():
             
             catalog[p['slug']] = {
                 "id": p['id'],
-                # Mapeia 'name' do banco para 'title' da API
                 "title": p['name'],
                 "desc": p['description'],
-                # Mapeia 'price_setup' e 'price_monthly' corretamente
                 "baseSetup": float(p['price_setup']),
                 "baseMonthly": float(p['price_monthly']),
                 "prazoBase": prazo_prod,
@@ -1168,7 +1080,7 @@ def get_cases():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- ROTA DE DOWNLOAD DO CONTRATO (ATUALIZADA: ESTILO FORMAL & PRAZOS DINÂMICOS) ---
+# --- ROTA DE DOWNLOAD DO CONTRATO ---
 @app.route('/api/contract/download', methods=['GET'])
 @login_required
 def download_contract_real():
@@ -1179,8 +1091,6 @@ def download_contract_real():
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Query atualizada para pegar addons e slug do produto
-        # ATENÇÃO: Correção no JOIN de products (name, slug)
         cur.execute("""
             SELECT c.name, c.document, c.email,
                    p.name as product_name, p.slug as product_slug,
@@ -1197,26 +1107,23 @@ def download_contract_real():
         if not data:
             return jsonify({"error": "Nenhum contrato ativo encontrado."}), 404
 
-        # --- CÁLCULO DE PRAZOS (LÓGICA NOVA) ---
-        # 1. Conta quantos addons tem
+        # --- CÁLCULO DE PRAZOS ---
         try:
             addons_list = json.loads(data['selected_addons']) if data['selected_addons'] else []
             qtd_addons = len(addons_list)
         except:
             qtd_addons = 0
             
-        # 2. Define prazo base
         slug = data.get('product_slug', '').lower()
         nome_prod = data.get('product_name', '').lower()
         
         if 'loja' in slug or 'virtual' in slug or 'ecommerce' in slug:
             prazo_base = 20
         elif 'custom' in slug or 'corp' in slug:
-             prazo_base = 30 # Projetos custom
+             prazo_base = 30
         else:
-            prazo_base = 15 # Institucional, Landing Page, etc.
+            prazo_base = 15
             
-        # 3. Cálculo Final
         dias_adicionais = qtd_addons * 2
         prazo_final = prazo_base + dias_adicionais
 
@@ -1225,22 +1132,18 @@ def download_contract_real():
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
         
-        # Margens
         margin_left = 50
         y = height - 50
         line_height = 14
 
-        # --- CABEÇALHO ---
         p.setFont("Helvetica-Bold", 14)
         p.drawCentredString(width / 2, y, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
         y -= 20
         p.drawCentredString(width / 2, y, "DE DESENVOLVIMENTO DE SOFTWARE E LICENÇA DE USO")
         y -= 40
 
-        # --- PARTES ---
         p.setFont("Helvetica", 10)
         
-        # CONTRATADA
         texto_contratada = [
             "Pelo presente instrumento particular, de um lado:",
             "CONTRATADA: LEANTTRO DIGITAL SOLUTIONS, nome fantasia de LEANDRO ANDRADE DE OLIVEIRA,",
@@ -1254,7 +1157,6 @@ def download_contract_real():
             
         y -= 10
         
-        # CONTRATANTE
         doc_cliente = data.get('document') or "Não informado"
         texto_contratante = [
             "De outro lado:",
@@ -1272,7 +1174,6 @@ def download_contract_real():
         p.drawString(margin_left, y, "Resolvem as Partes, de comum acordo, celebrar o presente Contrato, regido pelas seguintes cláusulas:")
         y -= 30
 
-        # --- CLÁUSULAS ---
         def draw_clause_title(title, current_y):
             p.setFont("Helvetica-Bold", 11)
             p.drawString(margin_left, current_y, title)
@@ -1285,7 +1186,6 @@ def download_contract_real():
                 current_y -= 12
             return current_y - 10
 
-        # 1. OBJETO
         y = draw_clause_title("CLÁUSULA PRIMEIRA - DO OBJETO", y)
         y = draw_clause_text([
             f"1.1. O presente contrato tem por objeto o desenvolvimento e licenciamento do projeto: {data['product_name'].upper()}.",
@@ -1293,7 +1193,6 @@ def download_contract_real():
             "conforme briefing preenchido pelo CONTRATANTE."
         ], y)
 
-        # 2. PRAZO
         y = draw_clause_title("CLÁUSULA SEGUNDA - DOS PRAZOS DE ENTREGA", y)
         y = draw_clause_text([
             f"2.1. O prazo estimado para entrega da primeira versão do projeto é de {prazo_final} dias úteis.",
@@ -1302,7 +1201,6 @@ def download_contract_real():
             "     necessário pelo CONTRATANTE através da plataforma ou e-mail."
         ], y)
 
-        # 3. VALORES
         y = draw_clause_title("CLÁUSULA TERCEIRA - DO PREÇO E MENSALIDADE", y)
         y = draw_clause_text([
             f"3.1. Valor de Setup (Criação/Implementação): R$ {data['total_setup']:,.2f}",
@@ -1311,7 +1209,6 @@ def download_contract_real():
             "     Backup diário e Suporte Técnico via Helpdesk."
         ], y)
 
-        # 4. DISPOSIÇÕES GERAIS (INCLUINDO AS SOLICITAÇÕES DO PROMPT)
         y = draw_clause_title("CLÁUSULA QUARTA - DISPOSIÇÕES GERAIS E NOTA FISCAL", y)
         y = draw_clause_text([
             "4.1. O CONTRATANTE tem direito a 03 (três) rodadas completas de revisão do layout.",
@@ -1322,7 +1219,6 @@ def download_contract_real():
             "4.4. A inadimplência superior a 10 dias acarretará na suspensão temporária dos serviços."
         ], y)
 
-        # 5. FORO
         y = draw_clause_title("CLÁUSULA QUINTA - DO FORO", y)
         y = draw_clause_text([
             "5.1. Fica eleito o foro da Comarca de São Paulo/SP para dirimir quaisquer dúvidas oriundas deste contrato."
@@ -1330,25 +1226,21 @@ def download_contract_real():
 
         y -= 40
         
-        # --- ASSINATURAS ---
         p.setLineWidth(0.5)
         
-        # Assinatura Leanttro
         p.line(margin_left, y, margin_left + 200, y)
         p.setFont("Helvetica", 8)
         p.drawString(margin_left, y - 10, "LEANTTRO DIGITAL SOLUTIONS")
         p.drawString(margin_left, y - 20, "Leandro Andrade de Oliveira")
 
-        # Assinatura Cliente
         p.line(width - margin_left - 200, y, width - margin_left, y)
         p.drawRightString(width - margin_left, y - 10, data['name'].upper())
         p.drawRightString(width - margin_left, y - 20, f"Doc: {doc_cliente}")
         
-        # Data
         try:
             locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
         except:
-            pass # Fallback se não tiver locale pt_BR instalado no servidor
+            pass
             
         data_atual = datetime.now().strftime("%d de %B de %Y")
         p.drawCentredString(width / 2, y - 60, f"São Paulo, {data_atual}")
@@ -1368,7 +1260,6 @@ def download_contract_real():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
-# --- ROTA LEGADA (ATUALIZADA) ---
 @app.route('/api/generate_contract', methods=['POST'])
 def generate_contract():
     try:
@@ -1472,7 +1363,6 @@ def signup_checkout():
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
 
-        # --- VALOR REAL (OFICIAL) ---
         unit_price = total_setup
         
         preference_data = {
@@ -1518,21 +1408,19 @@ def mercadopago_webhook():
                     conn = get_db_connection()
                     cur = conn.cursor()
                     
-                    if ref.startswith('INV-'): # Mensalidade
+                    if ref.startswith('INV-'):
                         invoice_id = ref.split('-')[1]
                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = %s", (invoice_id,))
                     
-                    elif ref.startswith('ADDON-'): # Compra de Addon dentro do painel
-                        order_id = ref.split('-')[1] # No create addon usamos ADDON-OrderID
-                        # Atualiza a order específica
+                    elif ref.startswith('ADDON-'):
+                        order_id = ref.split('-')[1]
                         cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (order_id,))
                         
-                    elif ref.startswith('ANNUAL-'): # Pagamento Anual
+                    elif ref.startswith('ANNUAL-'):
                         client_id_webhook = ref.split('-')[1]
-                        # Paga TODAS as faturas pendentes desse cliente
                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE client_id = %s AND status = 'pending'", (client_id_webhook,))
 
-                    else: # Setup Inicial (ID do pedido puro)
+                    else:
                         cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (ref,))
                         cur.execute("UPDATE clients SET status = 'active' WHERE id = (SELECT client_id FROM orders WHERE id = %s)", (ref,))
                     
@@ -1546,17 +1434,15 @@ def mercadopago_webhook():
     
     return jsonify({"status": "ignored"}), 200
 
-# --- SAVE BRIEFING ATUALIZADO (BLINDAGEM & CONCATENAÇÃO) ---
+# --- SAVE BRIEFING (AGORA COM GROQ) ---
 @app.route('/api/briefing/save', methods=['POST'])
 @login_required
 def save_briefing():
     try:
-        # Coleta campos padrão
         colors = request.form.get('colors')
         style = request.form.get('style')
         sections = request.form.get('sections')
 
-        # Coleta campos novos para blindagem
         benchmark = request.form.get('benchmark', '')
         diferenciais = request.form.get('diferenciais', '')
         instagram = request.form.get('instagram', '')
@@ -1571,7 +1457,6 @@ def save_briefing():
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     file_names.append(filename)
 
-        # Lógica de Concatenação (Salvar novos dados nas colunas antigas)
         final_style = f"{style}\n\n[INFO CONTATO & REDES]\nInstagram: {instagram}\nWhatsApp: {whatsapp_contact}"
         final_sections = f"{sections}\n\n[INFO ESTRATÉGICA]\nReferências (Benchmark): {benchmark}\nDiferenciais: {diferenciais}"
 
@@ -1585,12 +1470,16 @@ def save_briefing():
         - OUTPUT: Apenas o prompt técnico.
         """
         
+        tech_prompt = "Erro ao gerar com IA."
         try:
-            model = genai.GenerativeModel(SELECTED_MODEL_NAME)
-            response = model.generate_content(tech_prompt_input)
-            tech_prompt = response.text
-        except:
-            tech_prompt = "Erro ao gerar com IA."
+            if groq_client:
+                completion = groq_client.chat.completions.create(
+                    messages=[{"role": "user", "content": tech_prompt_input}],
+                    model="llama-3.3-70b-versatile"
+                )
+                tech_prompt = completion.choices[0].message.content
+        except Exception as e:
+            print(f"Erro IA Briefing: {e}")
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -1606,12 +1495,12 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT LELIS (ATUALIZADO COM HUNTER MODE) ---
+# --- CHATBOT LELIS (REFATORADO PARA GROQ) ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
-    print(f"\n--- [LELIS] Chat trigger (Modelo ativo: {SELECTED_MODEL_NAME}) ---")
+    print(f"\n--- [LELIS] Chat trigger (Groq Llama 3.3) ---")
     
-    if not chat_model:
+    if not groq_client:
         return jsonify({'error': 'Serviço de IA Offline.'}), 503
 
     try:
@@ -1623,31 +1512,35 @@ def handle_chat():
         if not user_message: user_message = "Olá"
 
         # --- INTELIGÊNCIA PARALELA (CAPTURA DE LEADS) ---
-        # Só ativa se o usuário NÃO estiver logado ou se for um lead frio
         if not current_user.is_authenticated:
             session_lead_id = session.get('temp_lead_id')
-            # Roda a extração em segundo plano (na prática aqui é síncrono mas rápido)
             new_lead_id = process_lead_data(user_message, session_lead_id)
             if new_lead_id:
                 session['temp_lead_id'] = new_lead_id
         # ------------------------------------------------
 
-        gemini_history = []
-        for message in history:
-            role = 'user' if message['user'] == 'user' else 'model'
-            gemini_history.append({'role': role, 'parts': [{'text': message['text']}]})
-            
-        chat_session = chat_model.start_chat(history=gemini_history)
+        # Construção do histórico para Groq (System + History)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT_LELIS}]
         
-        response = chat_session.send_message(
-            user_message,
-            generation_config=genai.types.GenerationConfig(temperature=0.7),
-            safety_settings={
-                 'HATE': 'BLOCK_NONE', 'HARASSMENT': 'BLOCK_NONE',
-                 'SEXUAL' : 'BLOCK_NONE', 'DANGEROUS' : 'BLOCK_NONE'
-            }
+        for msg in history:
+            # Mapeia roles do frontend para a API (user/model -> user/assistant)
+            role = 'user' if msg.get('user') == 'user' else 'assistant'
+            messages.append({"role": role, "content": msg['text']})
+
+        # Garante que a última mensagem do usuário está no array (caso o frontend não tenha enviado no history)
+        # Se a última do history já for o user_message, ok. Senão, adiciona.
+        if not history or history[-1]['text'] != user_message:
+             messages.append({"role": "user", "content": user_message})
+
+        completion = groq_client.chat.completions.create(
+            messages=messages,
+            model="llama-3.3-70b-versatile",
+            temperature=0.7,
+            max_tokens=250
         )
-        return jsonify({'reply': response.text})
+        
+        reply = completion.choices[0].message.content
+        return jsonify({'reply': reply})
 
     except Exception as e:
         print(f"❌ ERRO CHAT: {e}")
@@ -1660,13 +1553,21 @@ def briefing_chat():
     data = request.json
     last_msg = data.get('message')
     try:
-        model = genai.GenerativeModel(SELECTED_MODEL_NAME)
-        response = model.generate_content(f"Você é LIA, especialista em Briefing. Ajude o cliente a definir o site. Cliente: {last_msg}")
-        return jsonify({"reply": response.text})
+        if groq_client:
+            completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "Você é LIA, especialista em Briefing. Ajude o cliente a definir o site."},
+                    {"role": "user", "content": f"Cliente: {last_msg}"}
+                ],
+                model="llama-3.3-70b-versatile"
+            )
+            return jsonify({"reply": completion.choices[0].message.content})
+        else:
+            return jsonify({"reply": "IA Offline"})
     except:
         return jsonify({"reply": "Erro de conexão com a IA."})
 
-# --- ROTA EMERGÊNCIA DB (ATUALIZADA) ---
+# --- ROTA EMERGÊNCIA DB ---
 @app.route('/fix-db')
 def fix_db():
     conn = get_db_connection()
@@ -1675,7 +1576,6 @@ def fix_db():
     try:
         cur = conn.cursor()
         
-        # 1. Tabela Invoices
         cur.execute("""
             CREATE TABLE IF NOT EXISTS invoices (
                 id SERIAL PRIMARY KEY,
@@ -1688,7 +1588,6 @@ def fix_db():
             );
         """)
         
-        # 2. Tabela Addons
         cur.execute("""
             CREATE TABLE IF NOT EXISTS addons (
                 id SERIAL PRIMARY KEY,
@@ -1702,7 +1601,6 @@ def fix_db():
             );
         """)
 
-        # 3. Garante colunas legacy e novas
         try:
             cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
             cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS url_versao TEXT;")

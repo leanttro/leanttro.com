@@ -2,7 +2,7 @@ flask
 flask-cors
 psycopg2-binary
 gunicorn
-google-generativeai
+groq
 python-dotenv
 requests
 mercadopago
