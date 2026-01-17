@@ -11,7 +11,7 @@ from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from groq import Groq
+from groq import Groq  # ALTERAÇÃO: Importação da Groq
 import mercadopago
 from dotenv import load_dotenv
 import traceback
@@ -60,13 +60,14 @@ db_pool = None
 
 # --- FUNÇÃO DE INICIALIZAÇÃO DO BANCO (AUTO-CORREÇÃO) ---
 def init_db():
-    """Garante que a tabela invoices exista, addons, colunas novas do briefing e clients_bot"""
+    """Garante que a tabela invoices exista, addons e colunas novas do briefing"""
     global db_pool
     try:
         if DB_URL:
             db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DB_URL)
             print("✅ Pool de Conexões criado com sucesso")
             
+            # --- AUTO-FIX: CRIA TABELAS SE NÃO EXISTIREM ---
             conn = db_pool.getconn()
             try:
                 cur = conn.cursor()
@@ -98,7 +99,7 @@ def init_db():
                     );
                 """)
 
-                # 3. Tabela Briefings
+                # 3. Tabela Briefings e Colunas Novas (Versão)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS briefings (
                         id SERIAL PRIMARY KEY,
@@ -114,31 +115,18 @@ def init_db():
                     );
                 """)
                 
-                # 4. Tabela Clients Bot (NOVA - Para Máquina de Estados)
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS clients_bot (
-                        id SERIAL PRIMARY KEY,
-                        session_uuid VARCHAR(255) UNIQUE NOT NULL,
-                        name VARCHAR(255),
-                        email VARCHAR(255),
-                        whatsapp VARCHAR(50),
-                        dor_principal TEXT,
-                        accepts_marketing BOOLEAN,
-                        current_step VARCHAR(50) DEFAULT 'START',
-                        chat_history JSONB DEFAULT '[]',
-                        created_at TIMESTAMP DEFAULT NOW()
-                    );
-                """)
-
-                # Fallback: Adições de colunas em tabelas existentes
+                # Fallback: Tenta adicionar colunas caso a tabela já exista sem elas
                 try:
                     cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
-                except Exception: pass
+                except Exception:
+                    pass
                 
                 try:
                     cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS url_versao TEXT;")
-                except Exception: pass
+                except Exception:
+                    pass
                 
+                # Tenta adicionar colunas de CRM na tabela clients se não existirem
                 crm_cols = [
                     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS temperatura VARCHAR(50);",
                     "ALTER TABLE clients ADD COLUMN IF NOT EXISTS dor_principal TEXT;",
@@ -149,7 +137,8 @@ def init_db():
                 for sql in crm_cols:
                     try:
                         cur.execute(sql)
-                    except: pass 
+                    except:
+                        pass 
 
                 conn.commit()
                 print("✅ [SISTEMA] Tabelas verificadas/criadas com sucesso.")
@@ -166,9 +155,35 @@ def init_db():
 # INICIA O BANCO IMEDIATAMENTE
 init_db()
 
-# --- CONFIGURAÇÃO GROQ ---
+# --- CONFIGURAÇÃO GROQ (SUBSTITUIÇÃO DO GEMINI) ---
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 groq_client = None
+
+# --- SYSTEM PROMPT DO LELIS (BLINDADO - ORDEM RÍGIDA) ---
+SYSTEM_PROMPT_LELIS = """
+VOCÊ É: Lelis, IA da Leanttro Digital.
+
+ESTILO (WHATSAPP MODE):
+- Respostas curtas (máx 2 frases).
+- Direto e informal (use emojis pontuais).
+- PROIBIDO textão.
+
+MISSÃO CRÍTICA: Você DEVE capturar 3 DADOS (Nome, Email, WhatsApp) ANTES de falar sobre o projeto ou responder dúvidas.
+
+[ESTADO DOS DADOS - LEIA O BLOCO ABAIXO]:
+(O sistema injetará aqui o que já foi salvo no banco. Se faltar algo aqui, VOCÊ DEVE PEDIR).
+
+[FLUXO OBRIGATÓRIO - SIGA A ORDEM ESTRITA]:
+1. VERIFIQUE SE TEM NOME. Não tem? -> Pergunte o Nome. (Ignore qualquer outro assunto até ter o nome).
+2. VERIFIQUE SE TEM EMAIL. Não tem? -> Pergunte o Email.
+3. VERIFIQUE SE TEM WHATSAPP. Não tem? -> Pergunte o WhatsApp. (Diga: "Preciso do seu Zap pra validar o cadastro").
+4. TEM OS 3 DADOS? -> SÓ AGORA você pode responder dúvidas, vender sites ou dar consultoria.
+
+[COMPORTAMENTO]:
+- Se o usuário tentar falar do site mas ainda faltar o WhatsApp, diga: "Legal, vamos falar disso! Mas antes, digita seu WhatsApp pra eu deixar registrado?".
+- Se o dado já está no bloco 'DADOS JÁ CAPTURADOS', NUNCA PERGUNTE NOVAMENTE.
+- Seja simpático, mas firme na coleta de dados.
+"""
 
 if GROQ_API_KEY:
     try:
@@ -208,6 +223,7 @@ def get_db_connection():
 
 # --- FUNÇÃO AUXILIAR: ENVIO DE EMAIL ---
 def enviar_email(destinatario, link_recuperacao):
+    """Envia e-mail de recuperação usando SMTP"""
     if not SMTP_EMAIL or not SMTP_PASSWORD:
         print("⚠️ SMTP não configurado nas variáveis de ambiente.")
         return False
@@ -240,6 +256,7 @@ def enviar_email(destinatario, link_recuperacao):
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.sendmail(SMTP_EMAIL, destinatario, msg.as_string())
         server.quit()
+        print(f"✅ E-mail enviado para {destinatario}")
         return True
     except Exception as e:
         print(f"❌ Erro ao enviar e-mail: {e}")
@@ -247,11 +264,24 @@ def enviar_email(destinatario, link_recuperacao):
 
 # --- FUNÇÃO: GARANTIR FATURAS FUTURAS ---
 def ensure_future_invoices(client_id):
+    """Garante que o cliente tenha as próximas 12 mensalidades geradas."""
     conn = get_db_connection()
     if not conn:
         return
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER,
+                amount DECIMAL(10,2) NOT NULL,
+                due_date DATE NOT NULL,
+                status VARCHAR(50) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT NOW(),
+                paid_at TIMESTAMP
+            );
+        """)
         
         monthly_price = 0.0
         
@@ -269,8 +299,10 @@ def ensure_future_invoices(client_id):
         for o in orders:
             val_order = float(o.get('total_monthly') or 0)
             val_product = float(o.get('price_monthly') or 0)
+            
             if o.get('order_date'):
                 first_order_date = o['order_date'].date()
+            
             if val_order > 0:
                 monthly_price = val_order
                 break
@@ -303,13 +335,16 @@ def ensure_future_invoices(client_id):
             else:
                 free_until = first_order_date + timedelta(days=30)
                 target_due_date = date(free_until.year, free_until.month, 10)
+                
                 if target_due_date < free_until:
                     if target_due_date.month == 12:
                         target_due_date = date(target_due_date.year + 1, 1, 10)
                     else:
                         target_due_date = date(target_due_date.year, target_due_date.month + 1, 10)
+                
                 start_month = target_due_date.month - 1
                 start_year = target_due_date.year
+                
                 if start_month == 0:
                     start_month = 12
                     start_year -= 1
@@ -319,6 +354,7 @@ def ensure_future_invoices(client_id):
                 year_offset = (calc_month - 1) // 12
                 final_month = (calc_month - 1) % 12 + 1
                 final_year = start_year + year_offset
+                
                 due_dt = date(final_year, final_month, 10)
                 
                 cur.execute("SELECT id FROM invoices WHERE client_id = %s AND due_date = %s", (client_id, due_dt))
@@ -340,6 +376,7 @@ def ensure_future_invoices(client_id):
 # --- FUNÇÃO: DASHBOARD FINANCEIRO COMPLETO ---
 def get_financial_dashboard(client_id):
     ensure_future_invoices(client_id)
+    
     conn = get_db_connection()
     info = {
         "status_global": "ok", 
@@ -350,7 +387,8 @@ def get_financial_dashboard(client_id):
         "annual_savings": 0.0
     }
     
-    if not conn: return info
+    if not conn:
+        return info
 
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -408,7 +446,8 @@ def get_financial_dashboard(client_id):
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
-    if not conn: return None
+    if not conn:
+        return None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, name, email, status FROM clients WHERE id = %s", (user_id,))
@@ -418,6 +457,7 @@ def load_user(user_id):
             return User(u['id'], u['name'], u['email'], role, u['status'])
         return None
     except Exception as e:
+        print(f"Erro Auth Loader: {e}")
         return None
     finally:
         if db_pool and conn: db_pool.putconn(conn) 
@@ -432,6 +472,129 @@ def extract_days(value):
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- FUNÇÃO: EXTRAÇÃO DE DADOS (CALIBRADA) ---
+def process_lead_data(user_message, session_lead_id=None):
+    """
+    Usa a Groq em modo JSON para extrair dados estruturados da mensagem
+    e atualizar o banco de dados 'clients' em tempo real.
+    """
+    conn = None 
+    try:
+        if not groq_client: return session_lead_id
+
+        # 1. Extração via IA (Groq JSON)
+        extract_prompt = f"""
+        Analise a mensagem do usuário: "{user_message}".
+        Identifique ENTIDADES para CRM.
+        
+        REGRAS ESPECÍFICAS:
+        1. Se houver um número como '11999998888' ou '(11) 9...', isso É O WHATSAPP.
+        2. Se houver email, extraia.
+        3. Se houver nome (e não for saudação), extraia.
+
+        Extraia SOMENTE em JSON:
+        {{
+            "name": "nome se houver",
+            "email": "email se houver",
+            "whatsapp": "numero se houver",
+            "company_name": "empresa se houver",
+            "cargo": "cargo se houver",
+            "temperatura": "quente ou frio (baseado no interesse)",
+            "dor_principal": "resumo do problema citado"
+        }}
+        Se não tiver a info, use null. NÃO ADICIONE TEXTO EXTRA, APENAS O JSON.
+        """
+        
+        completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a specialized JSON data extractor."},
+                {"role": "user", "content": extract_prompt}
+            ],
+            model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"}
+        )
+        
+        content = completion.choices[0].message.content
+        data = json.loads(content)
+        
+        # Se não extraiu nada relevante, aborta para economizar DB
+        # Mas ignoramos 'temperatura' pq ela sempre vem preenchida
+        if not any(v for k,v in data.items() if k != 'temperatura'):
+            return session_lead_id
+
+        conn = get_db_connection()
+        if not conn: return session_lead_id
+        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        lead_id = session_lead_id
+        
+        # 2. Lógica de Upsert
+        
+        # Cenário A: Temos um ID de sessão
+        if lead_id:
+            fields = []
+            values = []
+            for k, v in data.items():
+                if v:
+                    fields.append(f"{k} = %s")
+                    values.append(v)
+            
+            if fields:
+                values.append(lead_id)
+                sql = f"UPDATE clients SET {', '.join(fields)} WHERE id = %s"
+                cur.execute(sql, tuple(values))
+                conn.commit()
+
+        # Cenário B: Não temos ID, mas o usuário deu Email agora
+        elif data.get('email'):
+            cur.execute("SELECT id FROM clients WHERE email = %s", (data['email'],))
+            exists = cur.fetchone()
+            if exists:
+                lead_id = exists['id']
+                if db_pool: db_pool.putconn(conn) # Devolve antes da recursão
+                return process_lead_data(user_message, lead_id)
+            else:
+                dummy_pass = generate_password_hash(str(uuid.uuid4()))
+                cur.execute("""
+                    INSERT INTO clients (name, email, whatsapp, company_name, cargo, temperatura, dor_principal, password_hash, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'lead', NOW())
+                    RETURNING id
+                """, (
+                    data.get('name') or 'Lead Sem Nome',
+                    data.get('email'),
+                    data.get('whatsapp'),
+                    data.get('company_name'),
+                    data.get('cargo'),
+                    data.get('temperatura') or 'frio',
+                    data.get('dor_principal'),
+                    dummy_pass
+                ))
+                lead_id = cur.fetchone()['id']
+                conn.commit()
+
+        # Cenário C: Não temos ID e nem Email, mas temos Nome ou Whats
+        elif (data.get('name') or data.get('whatsapp')) and not lead_id:
+            dummy_pass = generate_password_hash(str(uuid.uuid4()))
+            cur.execute("""
+                INSERT INTO clients (name, whatsapp, password_hash, status, temperatura, created_at)
+                VALUES (%s, %s, %s, 'lead_provisorio', 'frio', NOW())
+                RETURNING id
+            """, (data.get('name') or 'Visitante', data.get('whatsapp'), dummy_pass))
+            lead_id = cur.fetchone()['id']
+            conn.commit()
+        
+        return lead_id
+
+    except Exception as e:
+        print(f"Erro Background Lead Process: {e}")
+        if conn: conn.rollback()
+        return session_lead_id
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn and not db_pool: conn.close()
+
 
 # --- ROTAS DE FRONTEND ---
 
@@ -470,7 +633,9 @@ def briefing_page():
 @login_required
 def admin_page():
     conn = get_db_connection()
+    
     fin_dashboard = get_financial_dashboard(current_user.id)
+    
     stats = {
         "users": 0, "orders": 0, "revenue": 0.0, 
         "status_projeto": "AGUARDANDO", "revisoes": 3,
@@ -511,7 +676,8 @@ def admin_page():
             try:
                 cur.execute("SELECT id, name, price_setup, price_monthly, description FROM addons")
                 stats['available_addons'] = [dict(a) for a in cur.fetchall()]
-            except:
+            except Exception as e_addon:
+                print(f"Erro ao carregar addons: {e_addon}")
                 stats['available_addons'] = []
 
             cur.execute("""
@@ -529,12 +695,15 @@ def admin_page():
                     "sections": briefing['site_sections']
                 }
                 stats["url_versao"] = briefing.get('url_versao')
+                
                 if briefing['status'] == 'skipped':
                     stats['is_skipped'] = True
             
             if db_pool: db_pool.putconn(conn)
             elif conn: conn.close()
+            
     except Exception as e:
+        print(f"Erro Admin: {e}")
         if db_pool and conn: db_pool.putconn(conn)
         pass
     return render_template('admin.html', user=current_user, stats=stats)
@@ -564,6 +733,7 @@ def api_login():
 
         if user_data and user_data['password_hash']:
             if check_password_hash(user_data['password_hash'], password):
+                
                 user_obj = User(user_data['id'], user_data['name'], user_data['email'], 'user', user_data['status'])
                 login_user(user_obj)
                 
@@ -574,6 +744,7 @@ def api_login():
                 has_briefing = cur.fetchone()
                 
                 redirect_url = "/admin" if has_briefing else "/briefing"
+
                 return jsonify({"message": "Sucesso", "redirect": redirect_url})
         
         return jsonify({"error": "Credenciais inválidas"}), 401
@@ -600,6 +771,7 @@ def request_reset():
         token = s.dumps(email, salt='recover-key')
         
         reset_link = f"{BASE_URL}/login?reset_token={token}"
+        
         enviado = enviar_email(email, reset_link)
         
         if enviado:
@@ -628,6 +800,7 @@ def reset_password_confirm():
     conn = get_db_connection()
     try:
         cur = conn.cursor()
+        
         hashed = generate_password_hash(new_password)
         cur.execute("UPDATE clients SET password_hash = %s WHERE email = %s", (hashed, email))
         conn.commit()
@@ -659,6 +832,7 @@ def pay_setup():
             return jsonify({"error": "Pedido não encontrado ou já pago."}), 404
 
         unit_price = float(order['total_setup'])
+
         preference_data = {
             "items": [{"id": f"SETUP-{order_id}", "title": f"Ativação do Projeto #{order_id}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
@@ -694,6 +868,7 @@ def buy_addon():
         conn.commit()
 
         unit_price = float(addon['price_setup'])
+
         preference_data = {
             "items": [{"id": f"ADDON-{new_order_id}", "title": f"Upgrade: {addon['name']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
             "payer": {"name": current_user.name, "email": current_user.email},
@@ -721,10 +896,12 @@ def update_briefing():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
         cur.execute("SELECT revisoes_restantes, status FROM briefings WHERE client_id = %s", (current_user.id,))
         res = cur.fetchone()
         
-        if not res: return jsonify({"error": "Briefing não encontrado"}), 404
+        if not res:
+            return jsonify({"error": "Briefing não encontrado"}), 404
         
         revisoes = res['revisoes_restantes']
         status_atual = res['status']
@@ -761,6 +938,7 @@ def skip_briefing():
             VALUES (%s, 'Pendente', 'Pendente (Pulado)', 'Pendente (Pulado)', '', 'User skipped briefing', 'skipped', 3)
         """, (current_user.id,))
         conn.commit()
+        
         return jsonify({"success": True, "redirect": "/admin"})
     except Exception as e:
         conn.rollback()
@@ -772,27 +950,43 @@ def skip_briefing():
 @app.route('/api/pay_monthly', methods=['POST'])
 @login_required
 def pay_monthly():
-    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    if not mp_sdk:
+        return jsonify({"error": "Mercado Pago Offline"}), 500
+    
     data = request.json
     invoice_id = data.get('invoice_id')
+    
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, amount, due_date FROM invoices WHERE id = %s AND client_id = %s AND status = 'pending'", (invoice_id, current_user.id))
         invoice = cur.fetchone()
         
-        if not invoice: return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
+        if not invoice:
+            return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
 
         unit_price = float(invoice['amount'])
+
         preference_data = {
             "items": [{"id": f"INV-{invoice['id']}", "title": f"Mensalidade Leanttro - Venc: {invoice['due_date']}", "quantity": 1, "currency_id": "BRL", "unit_price": unit_price}],
-            "payer": {"name": current_user.name, "email": current_user.email},
-            "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1},
+            "payer": {
+                "name": current_user.name,
+                "email": current_user.email
+            },
+            "payment_methods": {
+                "excluded_payment_types": [{"id": "credit_card"}],
+                "installments": 1
+            },
             "external_reference": f"INV-{invoice['id']}" 
         }
 
         pref = mp_sdk.preference().create(preference_data)
-        return jsonify({"checkout_url": pref["response"]["init_point"], "invoice_id": invoice_id})
+        
+        return jsonify({
+            "checkout_url": pref["response"]["init_point"],
+            "invoice_id": invoice_id
+        })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
@@ -802,12 +996,17 @@ def pay_monthly():
 @app.route('/api/pay_annual', methods=['POST'])
 @login_required
 def pay_annual():
-    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    if not mp_sdk:
+        return jsonify({"error": "Mercado Pago Offline"}), 500
+    
     fin = get_financial_dashboard(current_user.id)
     total_discounted = fin['total_annual_discounted']
-    if total_discounted <= 0: return jsonify({"error": "Não há débitos pendentes."}), 400
+    
+    if total_discounted <= 0:
+        return jsonify({"error": "Não há débitos pendentes."}), 400
 
     unit_price = float(f"{total_discounted:.2f}")
+
     preference_data = {
         "items": [{"id": "ANNUAL", 
             "title": f"Antecipação Anual Leanttro - {len(fin['invoices'])} Parcelas", 
@@ -815,8 +1014,14 @@ def pay_annual():
             "currency_id": "BRL", 
             "unit_price": unit_price
         }],
-        "payer": {"name": current_user.name, "email": current_user.email},
-        "payment_methods": {"excluded_payment_types": [{"id": "credit_card"}], "installments": 1},
+        "payer": {
+            "name": current_user.name,
+            "email": current_user.email
+        },
+        "payment_methods": {
+            "excluded_payment_types": [{"id": "credit_card"}],
+            "installments": 1
+        },
         "external_reference": f"ANNUAL-{current_user.id}" 
     }
     
@@ -826,10 +1031,12 @@ def pay_annual():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/catalog', methods=['GET'])
 def get_catalog():
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro de Conexão"}), 500
+    if not conn:
+        return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, name, slug, description, price_setup, price_monthly, prazo_products FROM products WHERE is_active = TRUE")
@@ -839,6 +1046,7 @@ def get_catalog():
         for p in products:
             cur.execute("SELECT id, name, price_setup, price_monthly, description, prazo_addons FROM addons WHERE product_id = %s", (p['id'],))
             addons = cur.fetchall()
+            
             prazo_prod = extract_days(p.get('prazo_products')) or 10
             
             catalog[p['slug']] = {
@@ -867,32 +1075,39 @@ def get_catalog():
 @app.route('/api/cases', methods=['GET'])
 def get_cases():
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro de Conexão"}), 500
+    if not conn:
+        return jsonify({"error": "Erro de Conexão"}), 500
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("SELECT id, url, foto_site FROM \"case\" ORDER BY id DESC")
         raw_cases = cur.fetchall()
+        
         cases = []
         for c in raw_cases:
             case_dict = dict(c)
             if case_dict['foto_site'] and not case_dict['foto_site'].startswith('http'):
                 case_dict['foto_site'] = f"{DIRECTUS_ASSETS_URL}{case_dict['foto_site']}"
             cases.append(case_dict)
+        
         return jsonify(cases)
     except Exception as e:
+        print(f"Erro ao buscar cases: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
+# --- ROTA DE DOWNLOAD DO CONTRATO ---
 @app.route('/api/contract/download', methods=['GET'])
 @login_required
 def download_contract_real():
     conn = get_db_connection()
-    if not conn: return jsonify({"error": "Erro de conexão"}), 500
+    if not conn:
+        return jsonify({"error": "Erro de conexão"}), 500
     
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
         cur.execute("""
             SELECT c.name, c.document, c.email,
                    p.name as product_name, p.slug as product_slug,
@@ -903,26 +1118,37 @@ def download_contract_real():
             WHERE c.id = %s
             ORDER BY o.created_at DESC LIMIT 1
         """, (current_user.id,))
+        
         data = cur.fetchone()
         
-        if not data: return jsonify({"error": "Nenhum contrato ativo encontrado."}), 404
+        if not data:
+            return jsonify({"error": "Nenhum contrato ativo encontrado."}), 404
 
+        # --- CÁLCULO DE PRAZOS ---
         try:
             addons_list = json.loads(data['selected_addons']) if data['selected_addons'] else []
             qtd_addons = len(addons_list)
-        except: qtd_addons = 0
+        except:
+            qtd_addons = 0
             
         slug = data.get('product_slug', '').lower()
-        if 'loja' in slug or 'virtual' in slug or 'ecommerce' in slug: prazo_base = 20
-        elif 'custom' in slug or 'corp' in slug: prazo_base = 30
-        else: prazo_base = 15
+        nome_prod = data.get('product_name', '').lower()
+        
+        if 'loja' in slug or 'virtual' in slug or 'ecommerce' in slug:
+            prazo_base = 20
+        elif 'custom' in slug or 'corp' in slug:
+             prazo_base = 30
+        else:
+            prazo_base = 15
             
         dias_adicionais = qtd_addons * 2
         prazo_final = prazo_base + dias_adicionais
 
+        # --- GERAÇÃO DO PDF FORMAL ---
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
+        
         margin_left = 50
         y = height - 50
         line_height = 14
@@ -932,6 +1158,7 @@ def download_contract_real():
         y -= 20
         p.drawCentredString(width / 2, y, "DE DESENVOLVIMENTO DE SOFTWARE E LICENÇA DE USO")
         y -= 40
+
         p.setFont("Helvetica", 10)
         
         texto_contratada = [
@@ -944,6 +1171,7 @@ def download_contract_real():
         for linha in texto_contratada:
             p.drawString(margin_left, y, linha)
             y -= line_height
+            
         y -= 10
         
         doc_cliente = data.get('document') or "Não informado"
@@ -1014,17 +1242,22 @@ def download_contract_real():
         ], y)
 
         y -= 40
+        
         p.setLineWidth(0.5)
+        
         p.line(margin_left, y, margin_left + 200, y)
         p.setFont("Helvetica", 8)
         p.drawString(margin_left, y - 10, "LEANTTRO DIGITAL SOLUTIONS")
         p.drawString(margin_left, y - 20, "Leandro Andrade de Oliveira")
+
         p.line(width - margin_left - 200, y, width - margin_left, y)
         p.drawRightString(width - margin_left, y - 10, data['name'].upper())
         p.drawRightString(width - margin_left, y - 20, f"Doc: {doc_cliente}")
         
-        try: locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
-        except: pass
+        try:
+            locale.setlocale(locale.LC_TIME, 'pt_BR.utf8')
+        except:
+            pass
             
         data_atual = datetime.now().strftime("%d de %B de %Y")
         p.drawCentredString(width / 2, y - 60, f"São Paulo, {data_atual}")
@@ -1032,9 +1265,12 @@ def download_contract_real():
         p.showPage()
         p.save()
         buffer.seek(0)
+        
         filename = f"Contrato_Leanttro_{current_user.id}.pdf"
         return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+        
     except Exception as e:
+        print(f"Erro PDF Real: {e}")
         traceback.print_exc()
         return jsonify({"error": "Erro ao gerar contrato"}), 500
     finally:
@@ -1054,13 +1290,16 @@ def generate_contract():
         p.setFillColorRGB(0.82, 1, 0)
         p.setFont("Helvetica-BoldOblique", 24)
         p.drawString(50, height - 60, "LEANTTRO. DIGITAL SOLUTIONS")
+        
         p.setFillColorRGB(0, 0, 0)
         p.setFont("Helvetica-Bold", 18)
         p.drawString(50, height - 150, "CONTRATO DE PRESTAÇÃO DE SERVIÇOS")
+        
         p.setFont("Helvetica", 12)
         y = height - 200
         p.drawString(50, y, f"CONTRATANTE: {data.get('name', 'N/A').upper()}")
         p.drawString(50, y-20, f"DOCUMENTO: {data.get('document', 'N/A')}")
+        
         y -= 80
         p.setFont("Helvetica-Bold", 14)
         p.drawString(50, y, "ESCOPO E PRAZOS")
@@ -1070,6 +1309,7 @@ def generate_contract():
         p.drawString(50, y-20, f"Entrega Estimada: {data.get('deadline')} dias úteis")
         p.drawString(50, y-40, f"Setup: {data.get('total_setup')}")
         p.drawString(50, y-60, f"Mensal: {data.get('total_monthly')}")
+        
         y -= 100
         p.setFont("Helvetica-Bold", 12)
         p.drawString(50, y, "CLÁUSULAS GERAIS E ESCOPO")
@@ -1092,15 +1332,20 @@ def generate_contract():
 
 @app.route('/api/signup_checkout', methods=['POST'])
 def signup_checkout():
-    if not mp_sdk: return jsonify({"error": "Mercado Pago Offline"}), 500
+    if not mp_sdk:
+        return jsonify({"error": "Mercado Pago Offline"}), 500
+    
     data = request.json
     client = data.get('client')
     cart = data.get('cart')
-    if not client or not cart: return jsonify({"error": "Dados incompletos"}), 400
+    
+    if not client or not cart:
+        return jsonify({"error": "Dados incompletos"}), 400
 
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
         cur.execute("SELECT id FROM clients WHERE email = %s", (client['email'],))
         existing = cur.fetchone()
         
@@ -1108,7 +1353,9 @@ def signup_checkout():
             return jsonify({"error": "E-mail já cadastrado. Faça login."}), 400
         else:
             hashed = generate_password_hash(client['password'])
+            
             document = client.get('document', '') 
+            
             cur.execute("""
                 INSERT INTO clients (name, email, whatsapp, document, password_hash, status, created_at)
                 VALUES (%s, %s, %s, %s, %s, 'pendente', NOW())
@@ -1118,6 +1365,7 @@ def signup_checkout():
         
         addons_ids = cart.get('addon_ids', [])
         addons_json = json.dumps(addons_ids) 
+        
         total_setup = float(cart.get('total_setup') or 0)
         total_monthly = float(cart.get('total_monthly') or 0)
         
@@ -1127,10 +1375,13 @@ def signup_checkout():
             RETURNING id
         """, (client_id, cart['product_id'], addons_json, total_setup, total_monthly))
         order_id = cur.fetchone()['id']
+        
         conn.commit()
         
         webhook_url = "https://www.leanttro.com/api/webhook/mercadopago"
+
         unit_price = total_setup
+        
         preference_data = {
             "items": [{"id": str(cart['product_id']), "title": f"PROJETO WEB #{order_id} (TESTE)", "quantity": 1, "unit_price": unit_price}],
             "payer": {"name": client['name'], "email": client['email']},
@@ -1143,11 +1394,14 @@ def signup_checkout():
             "notification_url": webhook_url,
             "auto_return": "approved"
         }
+        
         pref = mp_sdk.preference().create(preference_data)
+        
         return jsonify({"checkout_url": pref["response"]["init_point"]})
 
     except Exception as e:
         conn.rollback()
+        print(f"Erro Signup Checkout: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -1170,15 +1424,19 @@ def mercadopago_webhook():
                 if status == 'approved' and ref:
                     conn = get_db_connection()
                     cur = conn.cursor()
+                    
                     if ref.startswith('INV-'):
                         invoice_id = ref.split('-')[1]
                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = %s", (invoice_id,))
+                    
                     elif ref.startswith('ADDON-'):
                         order_id = ref.split('-')[1]
                         cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (order_id,))
+                        
                     elif ref.startswith('ANNUAL-'):
                         client_id_webhook = ref.split('-')[1]
                         cur.execute("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE client_id = %s AND status = 'pending'", (client_id_webhook,))
+
                     else:
                         cur.execute("UPDATE orders SET payment_status = 'approved' WHERE id = %s", (ref,))
                         cur.execute("UPDATE clients SET status = 'active' WHERE id = (SELECT client_id FROM orders WHERE id = %s)", (ref,))
@@ -1188,7 +1446,9 @@ def mercadopago_webhook():
                     elif conn: conn.close()
             return jsonify({"status": "ok"}), 200
         except Exception as e:
+            print(f"Erro Webhook: {e}")
             return jsonify({"error": str(e)}), 500
+    
     return jsonify({"status": "ignored"}), 200
 
 # --- SAVE BRIEFING (AGORA COM GROQ) ---
@@ -1199,6 +1459,7 @@ def save_briefing():
         colors = request.form.get('colors')
         style = request.form.get('style')
         sections = request.form.get('sections')
+
         benchmark = request.form.get('benchmark', '')
         diferenciais = request.form.get('diferenciais', '')
         instagram = request.form.get('instagram', '')
@@ -1225,6 +1486,7 @@ def save_briefing():
         - STACK: HTML, TailwindCSS, JS.
         - OUTPUT: Apenas o prompt técnico.
         """
+        
         tech_prompt = "Erro ao gerar com IA."
         try:
             if groq_client:
@@ -1250,177 +1512,92 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT: LÓGICA RÍGIDA (MÁQUINA DE ESTADOS) - CORRIGIDO ---
+# --- CHATBOT LELIS (CORRIGIDO PARA NÃO ALUCINAR) ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
-    if not groq_client:
-        return jsonify({'reply': 'Serviço de IA Offline.'}), 503
-
-    data_in = request.json
-    user_message = data_in.get('message', '').strip()
+    print(f"\n--- [LELIS] Chat trigger ---")
     
-    # 1. Gestão de Sessão
-    if 'user_uuid' not in session:
-        session['user_uuid'] = str(uuid.uuid4())
-    session_uuid = session['user_uuid']
+    if not groq_client:
+        return jsonify({'error': 'Serviço de IA Offline.'}), 503
 
     conn = get_db_connection()
-    if not conn: return jsonify({'reply': 'Erro de conexão.'}), 500
 
     try:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        data = request.json
+        history = data.get('conversationHistory', [])
+        user_message = data.get('message', '')
+        if history and history[-1]['role'] == 'user':
+            user_message = history[-1]['text']
+        if not user_message: user_message = "Olá"
+
+        # --- INTELIGÊNCIA PARALELA (CAPTURA DE LEADS) ---
+        if not current_user.is_authenticated:
+            session_lead_id = session.get('temp_lead_id')
+            # Adicionei print para debug
+            print(f"📡 Processando mensagem: '{user_message}' | ID Sessão: {session_lead_id}")
+            
+            new_lead_id = process_lead_data(user_message, session_lead_id)
+            
+            if new_lead_id and new_lead_id != session_lead_id:
+                print(f"💾 DADOS SALVOS! Novo ID vinculado: {new_lead_id}")
+                session['temp_lead_id'] = new_lead_id
+            else:
+                print("⚠️ Nenhuma informação nova para salvar (ainda).")
+        # ------------------------------------------------
+
+        # --- CONSTRUÇÃO DO PROMPT ---
+        known_data = {}
+        target_id = current_user.id if current_user.is_authenticated else session.get('temp_lead_id')
+
+        system_instruction = SYSTEM_PROMPT_LELIS
+
+        if target_id and conn:
+             try:
+                 cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                 cur.execute("SELECT name, email, whatsapp FROM clients WHERE id = %s", (target_id,))
+                 row = cur.fetchone()
+                 if row:
+                     known_data = row
+                     print(f"🧠 Contexto recuperado do DB: {known_data}")
+             except Exception as db_err:
+                 print(f"Erro ao ler contexto do chat: {db_err}")
+
+        # LÓGICA RÍGIDA DE INJEÇÃO DE CONTEXTO
+        if known_data:
+             system_instruction += f"\n\n[DADOS JÁ CAPTURADOS NO SISTEMA (NÃO PERGUNTE NOVAMENTE)]:"
+             if known_data.get('name'): system_instruction += f"\n- Nome: {known_data['name']}"
+             if known_data.get('email'): system_instruction += f"\n- Email: {known_data['email']}"
+             if known_data.get('whatsapp'): system_instruction += f"\n- WhatsApp: {known_data['whatsapp']}"
+        else:
+             # AQUI ESTÁ O PULO DO GATO:
+             # Se não tem dados, avisamos explicitamente a IA que ela NÃO CONHECE o usuário.
+             system_instruction += f"\n\n[STATUS ATUAL]: VOCÊ NÃO TEM DADOS DESTE USUÁRIO. PERGUNTE O NOME."
+
+        # -------------------------------------------------
+
+        messages = [{"role": "system", "content": system_instruction}]
         
-        # 2. Recuperar ou Criar Estado do Usuário
-        cur.execute("SELECT * FROM clients_bot WHERE session_uuid = %s", (session_uuid,))
-        user_state = cur.fetchone()
+        for msg in history:
+            role = 'user' if msg.get('user') == 'user' else 'assistant'
+            messages.append({"role": role, "content": msg['text']})
 
-        if not user_state:
-            cur.execute("""
-                INSERT INTO clients_bot (session_uuid, current_step)
-                VALUES (%s, 'START') RETURNING *
-            """, (session_uuid,))
-            conn.commit()
-            user_state = cur.fetchone()
+        if not history or history[-1]['text'] != user_message:
+             messages.append({"role": "user", "content": user_message})
 
-        current_step = user_state['current_step']
-        reply_text = ""
-        next_step = current_step
-
-        # --- MÁQUINA DE ESTADOS ---
-
-        # ESTADO: START -> Vai direto para pergunta de marketing
-        if current_step == 'START':
-            next_step = 'ASK_MARKETING'
-            reply_text = "Olá! Sou o Lelis, da Leanttro. Antes de falarmos, posso te enviar novidades sobre tecnologia por aqui?"
-            
-            cur.execute("UPDATE clients_bot SET current_step = %s WHERE session_uuid = %s", (next_step, session_uuid))
-            conn.commit()
-            return jsonify({'reply': reply_text})
-
-        # ESTADO: ASK_MARKETING
-        elif current_step == 'ASK_MARKETING':
-            # PROMPT CORRIGIDO PARA PORTUGUÊS
-            try:
-                analysis = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "Analyze user input (Portuguese). 'Sim', 'Claro', 'Pode', 'Yes' -> consent=true, valid=true. 'Não', 'Jamais', 'No' -> consent=false, valid=true. Unclear/Garbage -> valid=false. Return JSON: {\"consent\": boolean, \"valid\": boolean}."},
-                        {"role": "user", "content": user_message}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    response_format={"type": "json_object"}
-                )
-                result = json.loads(analysis.choices[0].message.content)
-                
-                if result.get('valid'):
-                    cur.execute("UPDATE clients_bot SET accepts_marketing = %s, current_step = 'ASK_NAME' WHERE session_uuid = %s", (result.get('consent'), session_uuid))
-                    conn.commit()
-                    reply_text = "Combinado! Agora, qual é o seu nome?"
-                else:
-                    reply_text = "Desculpe, não entendi. Posso enviar novidades? (Responda com 'Sim' ou 'Não')"
-            except:
-                 reply_text = "Não entendi. Digite apenas 'Sim' ou 'Não'."
-
-        # ESTADO: ASK_NAME
-        elif current_step == 'ASK_NAME':
-            try:
-                analysis = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "Extract name from Portuguese text. Return JSON: {\"name\": string}. If no name found, return null name."},
-                        {"role": "user", "content": user_message}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    response_format={"type": "json_object"}
-                )
-                result = json.loads(analysis.choices[0].message.content)
-                name = result.get('name')
-                
-                if name:
-                    cur.execute("UPDATE clients_bot SET name = %s, current_step = 'ASK_EMAIL' WHERE session_uuid = %s", (name, session_uuid))
-                    conn.commit()
-                    reply_text = f"Prazer, {name}! Qual é o seu melhor e-mail?"
-                else:
-                    reply_text = "Poderia me dizer apenas seu nome para eu registrar aqui?"
-            except:
-                reply_text = "Qual é o seu nome?"
-
-        # ESTADO: ASK_EMAIL
-        elif current_step == 'ASK_EMAIL':
-            try:
-                analysis = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "Extract email. Return JSON: {\"email\": string}. If invalid/missing, return null."},
-                        {"role": "user", "content": user_message}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    response_format={"type": "json_object"}
-                )
-                result = json.loads(analysis.choices[0].message.content)
-                email = result.get('email')
-
-                if email:
-                    cur.execute("UPDATE clients_bot SET email = %s, current_step = 'ASK_WHATSAPP' WHERE session_uuid = %s", (email, session_uuid))
-                    conn.commit()
-                    reply_text = "Show! E qual seu WhatsApp (com DDD)?"
-                else:
-                    reply_text = "Parece que esse e-mail não é válido. Tenta de novo?"
-            except:
-                reply_text = "Por favor, digite um e-mail válido."
-
-        # ESTADO: ASK_WHATSAPP
-        elif current_step == 'ASK_WHATSAPP':
-            try:
-                analysis = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "Extract phone number/whatsapp. Return JSON: {\"whatsapp\": string}. If invalid, return null."},
-                        {"role": "user", "content": user_message}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    response_format={"type": "json_object"}
-                )
-                result = json.loads(analysis.choices[0].message.content)
-                whatsapp = result.get('whatsapp')
-
-                if whatsapp:
-                    cur.execute("UPDATE clients_bot SET whatsapp = %s, current_step = 'ASK_PAIN' WHERE session_uuid = %s", (whatsapp, session_uuid))
-                    conn.commit()
-                    reply_text = "Perfeito, dados anotados. Me conta: o que você precisa desenvolver hoje? (Site, App, Sistema...)"
-                else:
-                    reply_text = "Preciso de um número válido (com DDD) para seguirmos."
-            except:
-                reply_text = "Digite seu WhatsApp com DDD, por favor."
-
-        # ESTADO: ASK_PAIN (Última etapa de coleta)
-        elif current_step == 'ASK_PAIN':
-            cur.execute("UPDATE clients_bot SET dor_principal = %s, current_step = 'FINISHED' WHERE session_uuid = %s", (user_message, session_uuid))
-            conn.commit()
-            
-            reply_text = "Entendi! Vou analisar seu projeto. Como posso te ajudar com detalhes técnicos agora?"
-
-        # ESTADO: FINISHED (Chat Livre)
-        elif current_step == 'FINISHED':
-            system_prompt = f"""
-            Você é Lelis, consultor da Leanttro.
-            O usuário se chama {user_state.get('name')}.
-            Ele precisa de: {user_state.get('dor_principal')}.
-            Responda em PORTUGUÊS. Seja direto, técnico e ajude-o a escolher soluções da Leanttro.
-            Sem textão. Respostas curtas.
-            """
-            
-            completion = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                model="llama-3.3-70b-versatile",
-                max_tokens=200
-            )
-            reply_text = completion.choices[0].message.content
-
-        return jsonify({'reply': reply_text})
+        completion = groq_client.chat.completions.create(
+            messages=messages,
+            model="llama-3.3-70b-versatile",
+            temperature=0.5, # Reduzi temperatura para ele ser menos "criativo" e mais obediente
+            max_tokens=250
+        )
+        
+        reply = completion.choices[0].message.content
+        return jsonify({'reply': reply})
 
     except Exception as e:
         print(f"❌ ERRO CHAT: {e}")
-        return jsonify({'reply': "Tive um erro interno. Podemos recomeçar?"}), 200
+        traceback.print_exc()
+        return jsonify({'reply': "Minha conexão caiu... 🔌 Chama no WhatsApp?"}), 200
     finally:
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
@@ -1448,8 +1625,52 @@ def briefing_chat():
 # --- ROTA EMERGÊNCIA DB ---
 @app.route('/fix-db')
 def fix_db():
-    init_db()
-    return "✅ Banco Atualizado com Sucesso!"
+    conn = get_db_connection()
+    if not conn:
+        return "Erro ao conectar no banco"
+    try:
+        cur = conn.cursor()
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id),
+                amount DECIMAL(10,2) NOT NULL,
+                due_date DATE NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT NOW(),
+                paid_at TIMESTAMP
+            );
+        """)
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS addons (
+                id SERIAL PRIMARY KEY,
+                product_id INTEGER,
+                name VARCHAR(100) NOT NULL,
+                description TEXT,
+                price_setup DECIMAL(10,2) NOT NULL,
+                price_monthly DECIMAL(10,2) DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                prazo_addons INTEGER DEFAULT 2
+            );
+        """)
+
+        try:
+            cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS revisoes_restantes INTEGER DEFAULT 3;")
+            cur.execute("ALTER TABLE briefings ADD COLUMN IF NOT EXISTS url_versao TEXT;")
+            cur.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS document VARCHAR(50);")
+        except:
+            pass
+
+        conn.commit()
+        return "✅ Banco Atualizado com Sucesso! Tabelas 'invoices' e 'addons' verificadas e colunas adicionadas."
+    except Exception as e:
+        conn.rollback()
+        return f"❌ Erro ao atualizar DB: {e}"
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
