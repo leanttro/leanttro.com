@@ -1250,7 +1250,7 @@ def save_briefing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- CHATBOT: LÓGICA RÍGIDA (MÁQUINA DE ESTADOS) ---
+# --- CHATBOT: LÓGICA RÍGIDA (MÁQUINA DE ESTADOS) - CORRIGIDO ---
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     if not groq_client:
@@ -1299,102 +1299,110 @@ def handle_chat():
 
         # ESTADO: ASK_MARKETING
         elif current_step == 'ASK_MARKETING':
-            # Analisa resposta Sim/Não
-            analysis = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "Analyze user input. Return JSON: {\"consent\": boolean, \"valid\": boolean}. If unclear, valid=false."},
-                    {"role": "user", "content": user_message}
-                ],
-                model="llama-3.3-70b-versatile",
-                response_format={"type": "json_object"}
-            )
-            result = json.loads(analysis.choices[0].message.content)
-            
-            if result.get('valid'):
-                # Salva e avança
-                cur.execute("UPDATE clients_bot SET accepts_marketing = %s, current_step = 'ASK_NAME' WHERE session_uuid = %s", (result.get('consent'), session_uuid))
-                conn.commit()
-                reply_text = "Combinado! Agora, qual é o seu nome?"
-            else:
-                reply_text = "Desculpe, não entendi. Posso enviar novidades? (Sim ou Não)"
+            # PROMPT CORRIGIDO PARA PORTUGUÊS
+            try:
+                analysis = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "Analyze user input (Portuguese). 'Sim', 'Claro', 'Pode', 'Yes' -> consent=true, valid=true. 'Não', 'Jamais', 'No' -> consent=false, valid=true. Unclear/Garbage -> valid=false. Return JSON: {\"consent\": boolean, \"valid\": boolean}."},
+                        {"role": "user", "content": user_message}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    response_format={"type": "json_object"}
+                )
+                result = json.loads(analysis.choices[0].message.content)
+                
+                if result.get('valid'):
+                    cur.execute("UPDATE clients_bot SET accepts_marketing = %s, current_step = 'ASK_NAME' WHERE session_uuid = %s", (result.get('consent'), session_uuid))
+                    conn.commit()
+                    reply_text = "Combinado! Agora, qual é o seu nome?"
+                else:
+                    reply_text = "Desculpe, não entendi. Posso enviar novidades? (Responda com 'Sim' ou 'Não')"
+            except:
+                 reply_text = "Não entendi. Digite apenas 'Sim' ou 'Não'."
 
         # ESTADO: ASK_NAME
         elif current_step == 'ASK_NAME':
-            analysis = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "Extract name. Return JSON: {\"name\": string}. If no name found, return null name."},
-                    {"role": "user", "content": user_message}
-                ],
-                model="llama-3.3-70b-versatile",
-                response_format={"type": "json_object"}
-            )
-            result = json.loads(analysis.choices[0].message.content)
-            name = result.get('name')
-            
-            if name:
-                cur.execute("UPDATE clients_bot SET name = %s, current_step = 'ASK_EMAIL' WHERE session_uuid = %s", (name, session_uuid))
-                conn.commit()
-                reply_text = f"Prazer, {name}! Qual é o seu melhor e-mail?"
-            else:
-                reply_text = "Poderia me dizer seu nome para eu registrar aqui?"
+            try:
+                analysis = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "Extract name from Portuguese text. Return JSON: {\"name\": string}. If no name found, return null name."},
+                        {"role": "user", "content": user_message}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    response_format={"type": "json_object"}
+                )
+                result = json.loads(analysis.choices[0].message.content)
+                name = result.get('name')
+                
+                if name:
+                    cur.execute("UPDATE clients_bot SET name = %s, current_step = 'ASK_EMAIL' WHERE session_uuid = %s", (name, session_uuid))
+                    conn.commit()
+                    reply_text = f"Prazer, {name}! Qual é o seu melhor e-mail?"
+                else:
+                    reply_text = "Poderia me dizer apenas seu nome para eu registrar aqui?"
+            except:
+                reply_text = "Qual é o seu nome?"
 
         # ESTADO: ASK_EMAIL
         elif current_step == 'ASK_EMAIL':
-            analysis = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "Extract email. Return JSON: {\"email\": string}. If invalid, return null."},
-                    {"role": "user", "content": user_message}
-                ],
-                model="llama-3.3-70b-versatile",
-                response_format={"type": "json_object"}
-            )
-            result = json.loads(analysis.choices[0].message.content)
-            email = result.get('email')
+            try:
+                analysis = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "Extract email. Return JSON: {\"email\": string}. If invalid/missing, return null."},
+                        {"role": "user", "content": user_message}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    response_format={"type": "json_object"}
+                )
+                result = json.loads(analysis.choices[0].message.content)
+                email = result.get('email')
 
-            if email:
-                cur.execute("UPDATE clients_bot SET email = %s, current_step = 'ASK_WHATSAPP' WHERE session_uuid = %s", (email, session_uuid))
-                conn.commit()
-                reply_text = "Show! E qual seu WhatsApp (com DDD)?"
-            else:
-                reply_text = "Parece que esse e-mail não é válido. Tenta de novo?"
+                if email:
+                    cur.execute("UPDATE clients_bot SET email = %s, current_step = 'ASK_WHATSAPP' WHERE session_uuid = %s", (email, session_uuid))
+                    conn.commit()
+                    reply_text = "Show! E qual seu WhatsApp (com DDD)?"
+                else:
+                    reply_text = "Parece que esse e-mail não é válido. Tenta de novo?"
+            except:
+                reply_text = "Por favor, digite um e-mail válido."
 
         # ESTADO: ASK_WHATSAPP
         elif current_step == 'ASK_WHATSAPP':
-            analysis = groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "Extract phone number. Return JSON: {\"whatsapp\": string}. If invalid, return null."},
-                    {"role": "user", "content": user_message}
-                ],
-                model="llama-3.3-70b-versatile",
-                response_format={"type": "json_object"}
-            )
-            result = json.loads(analysis.choices[0].message.content)
-            whatsapp = result.get('whatsapp')
+            try:
+                analysis = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "Extract phone number/whatsapp. Return JSON: {\"whatsapp\": string}. If invalid, return null."},
+                        {"role": "user", "content": user_message}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    response_format={"type": "json_object"}
+                )
+                result = json.loads(analysis.choices[0].message.content)
+                whatsapp = result.get('whatsapp')
 
-            if whatsapp:
-                cur.execute("UPDATE clients_bot SET whatsapp = %s, current_step = 'ASK_PAIN' WHERE session_uuid = %s", (whatsapp, session_uuid))
-                conn.commit()
-                reply_text = "Perfeito, dados anotados. Me conta: o que você precisa desenvolver hoje? (Site, App, Sistema...)"
-            else:
-                reply_text = "Preciso de um número válido (com DDD) para seguirmos."
+                if whatsapp:
+                    cur.execute("UPDATE clients_bot SET whatsapp = %s, current_step = 'ASK_PAIN' WHERE session_uuid = %s", (whatsapp, session_uuid))
+                    conn.commit()
+                    reply_text = "Perfeito, dados anotados. Me conta: o que você precisa desenvolver hoje? (Site, App, Sistema...)"
+                else:
+                    reply_text = "Preciso de um número válido (com DDD) para seguirmos."
+            except:
+                reply_text = "Digite seu WhatsApp com DDD, por favor."
 
         # ESTADO: ASK_PAIN (Última etapa de coleta)
         elif current_step == 'ASK_PAIN':
-            # Salva o texto livre como a dor principal e finaliza o fluxo
             cur.execute("UPDATE clients_bot SET dor_principal = %s, current_step = 'FINISHED' WHERE session_uuid = %s", (user_message, session_uuid))
             conn.commit()
             
-            # Gera a primeira resposta de consultoria
             reply_text = "Entendi! Vou analisar seu projeto. Como posso te ajudar com detalhes técnicos agora?"
 
         # ESTADO: FINISHED (Chat Livre)
         elif current_step == 'FINISHED':
-            # Contexto para o Chat Livre
             system_prompt = f"""
             Você é Lelis, consultor da Leanttro.
             O usuário se chama {user_state.get('name')}.
             Ele precisa de: {user_state.get('dor_principal')}.
-            Seja direto, técnico e ajude-o a escolher soluções da Leanttro.
+            Responda em PORTUGUÊS. Seja direto, técnico e ajude-o a escolher soluções da Leanttro.
             Sem textão. Respostas curtas.
             """
             
