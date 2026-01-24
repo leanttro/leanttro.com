@@ -624,7 +624,7 @@ def blog_post(slug):
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT title, content, cover_image, published_at, description, keywords 
-            FROM posts 
+            FROM Posts 
             WHERE slug = %s AND status = 'published'
         """, (slug,))
         post = cur.fetchone()
