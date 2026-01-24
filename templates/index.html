@@ -1129,7 +1129,7 @@
             try {
                 // Fetch direto da API do Directus para não depender do backend Flask
                 // Pega os 3 últimos posts publicados, ordenados por data
-                const res = await fetch('https://api.leanttro.com/items/posts?filter[status][_eq]=published&sort=-date_created&limit=3');
+                const res = await fetch('https://api.leanttro.com/items/Posts?filter[status][_eq]=published&sort=-date_created&limit=3');
                 const response = await res.json();
                 const posts = response.data;
 
