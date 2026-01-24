@@ -589,16 +589,16 @@ Sitemap: {base_url}/sitemap.xml
 """
     return Response(text, mimetype='text/plain')
 
-# --- ROTAS DE BLOG (NOVO) ---
+# --- ROTAS DE BLOG (CORRIGIDO PARA USO DE ASPAS NA TABELA) ---
 @app.route('/blog')
 def blog_index():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Pega posts publicados
+        # CORREÇÃO: "Posts" com aspas duplas para o PostgreSQL respeitar o case sensitive
         cur.execute("""
             SELECT title, slug, cover_image, description, published_at 
-            FROM Posts 
+            FROM "Posts"
             WHERE status = 'published' 
             ORDER BY published_at DESC
         """)
@@ -622,21 +622,25 @@ def blog_post(slug):
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # CORREÇÃO: "Posts" com aspas duplas aqui também!
         cur.execute("""
             SELECT title, content, cover_image, published_at, description, keywords 
-            FROM Posts 
+            FROM "Posts" 
             WHERE slug = %s AND status = 'published'
         """, (slug,))
         post = cur.fetchone()
         
-        if not post: abort(404)
+        if not post: 
+            print(f"Post não encontrado para slug: {slug}")
+            abort(404)
 
         if post['cover_image']:
             post['cover_image'] = f"{DIRECTUS_ASSETS_URL}{post['cover_image']}"
             
         return render_template('post.html', post=post)
     except Exception as e:
-        print(f"Erro Blog Post: {e}")
+        print(f"Erro CRÍTICO no Blog Post: {e}")
+        # Retorna 404 em caso de erro SQL (como tabela não encontrada) para não vazar erro interno
         abort(404)
     finally:
         if db_pool and conn: db_pool.putconn(conn)
