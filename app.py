@@ -589,16 +589,16 @@ Sitemap: {base_url}/sitemap.xml
 """
     return Response(text, mimetype='text/plain')
 
-# --- ROTAS DE BLOG (CORRIGIDO PARA USO DE ASPAS NA TABELA) ---
+# --- ROTAS DE BLOG (CORRIGIDO: TABELA "Posts" COM ASPAS) ---
 @app.route('/blog')
 def blog_index():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # CORREÇÃO: "Posts" com aspas duplas para o PostgreSQL respeitar o case sensitive
+        # CRÍTICO: "Posts" deve estar entre aspas duplas para o PostgreSQL aceitar maiúscula
         cur.execute("""
             SELECT title, slug, cover_image, description, published_at 
-            FROM "Posts"
+            FROM "Posts" 
             WHERE status = 'published' 
             ORDER BY published_at DESC
         """)
@@ -610,8 +610,7 @@ def blog_index():
         
         return render_template('blog.html', posts=posts)
     except Exception as e:
-        print(f"Erro Blog Index (Tabela não existe?): {e}")
-        # Retorna array vazio para não quebrar se a tabela não existir
+        print(f"Erro Blog Index: {e}")
         return render_template('blog.html', posts=[])
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -622,7 +621,7 @@ def blog_post(slug):
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # CORREÇÃO: "Posts" com aspas duplas aqui também!
+        # CRÍTICO: "Posts" deve estar entre aspas duplas
         cur.execute("""
             SELECT title, content, cover_image, published_at, description, keywords 
             FROM "Posts" 
@@ -631,7 +630,7 @@ def blog_post(slug):
         post = cur.fetchone()
         
         if not post: 
-            print(f"Post não encontrado para slug: {slug}")
+            print(f"Post não encontrado: {slug}")
             abort(404)
 
         if post['cover_image']:
@@ -640,7 +639,7 @@ def blog_post(slug):
         return render_template('post.html', post=post)
     except Exception as e:
         print(f"Erro CRÍTICO no Blog Post: {e}")
-        # Retorna 404 em caso de erro SQL (como tabela não encontrada) para não vazar erro interno
+        # Retorna 404 em caso de erro para não vazar info do banco
         abort(404)
     finally:
         if db_pool and conn: db_pool.putconn(conn)
