@@ -6,7 +6,7 @@ import psycopg2
 import psycopg2.extras
 from psycopg2 import pool
 from datetime import datetime, timedelta, date
-# ADICIONADO: unicodedata para corrigir o erro de acentuação nos links do blog
+# MANTIDO: Importação essencial para correção de acentos
 import unicodedata
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory, Response
 from flask_cors import CORS
@@ -618,48 +618,73 @@ def blog_index():
         if db_pool and conn: db_pool.putconn(conn)
         elif conn: conn.close()
 
+# --- ROTA DO POST (ATUALIZADA COM SUPER BUSCA) ---
 @app.route('/blog/<slug>')
 def blog_post(slug):
-    # --- FIX: Normalização de Slug (CORREÇÃO DO ERRO DE ACENTO) ---
-    # O navegador manda '...%C3%A9...' (é), mas o banco tem 'e'.
-    # Isso normaliza o slug para buscar sem acento primeiro.
+    # 1. Tenta normalizar o input (remover acentos padrão)
     try:
-        normalized_slug = unicodedata.normalize('NFKD', slug).encode('ASCII', 'ignore').decode('ASCII')
+        normalized_input = unicodedata.normalize('NFKD', slug).encode('ASCII', 'ignore').decode('ASCII')
     except:
-        normalized_slug = slug # Fallback caso falhe
+        normalized_input = slug
 
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # 1. Tenta buscar pelo slug normalizado (sem acento)
+        post = None
+
+        # TENTATIVA 1: Busca Exata (O que veio na URL)
         cur.execute("""
             SELECT title, content, cover_image, published_at, description, keywords 
-            FROM "Posts" 
-            WHERE slug = %s AND status = 'published'
-        """, (normalized_slug,))
+            FROM "Posts" WHERE slug = %s AND status = 'published'
+        """, (slug,))
         post = cur.fetchone()
         
-        # 2. Se não achar, tenta com o original (vai que salvaram com acento mesmo)
-        if not post:
+        # TENTATIVA 2: Busca Normalizada (Remove acentos se a URL tiver)
+        if not post and normalized_input != slug:
              cur.execute("""
                 SELECT title, content, cover_image, published_at, description, keywords 
-                FROM "Posts" 
-                WHERE slug = %s AND status = 'published'
-            """, (slug,))
+                FROM "Posts" WHERE slug = %s AND status = 'published'
+            """, (normalized_input,))
              post = cur.fetchone()
 
+        # TENTATIVA 3: SUPER BUSCA (FALLBACK FINAL)
+        # Se nada funcionou, baixa todos os slugs e compara "limpo com limpo"
+        if not post:
+            cur.execute("SELECT slug FROM \"Posts\" WHERE status = 'published'")
+            all_slugs = cur.fetchall()
+            
+            target_slug = None
+            for item in all_slugs:
+                db_slug = item['slug']
+                # Normaliza o slug do banco
+                try:
+                    norm_db = unicodedata.normalize('NFKD', db_slug).encode('ASCII', 'ignore').decode('ASCII')
+                except:
+                    norm_db = db_slug
+                
+                # Se o slug do banco (limpo) for igual ao slug da URL (limpo)
+                if norm_db == normalized_input:
+                    target_slug = db_slug
+                    break
+            
+            if target_slug:
+                 cur.execute("""
+                    SELECT title, content, cover_image, published_at, description, keywords 
+                    FROM "Posts" WHERE slug = %s
+                """, (target_slug,))
+                 post = cur.fetchone()
+
         if not post: 
-            print(f"Post não encontrado para slug: {slug} (Normalizado tentado: {normalized_slug})")
+            print(f"Post não encontrado. Slug Original: {slug} | Norm: {normalized_input}")
             abort(404)
 
         if post['cover_image']:
             post['cover_image'] = f"{DIRECTUS_ASSETS_URL}{post['cover_image']}"
             
         return render_template('post.html', post=post)
+
     except Exception as e:
         print(f"Erro CRÍTICO no Blog Post: {e}")
-        # Retorna 404 em caso de erro SQL (como tabela não encontrada) para não vazar erro interno
         abort(404)
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -901,7 +926,7 @@ def pay_monthly():
         cur.execute("SELECT id, amount, due_date FROM invoices WHERE id = %s AND client_id = %s AND status = 'pending'", (invoice_id, current_user.id))
         invoice = cur.fetchone()
         
-        if not invoice: return jsonify({"error": "Fatura não encontrada ou já paga."}), 404
+        if not invoice: return jsonify({"error": "Fatura não encontrada ou já pago."}), 404
 
         unit_price = float(invoice['amount'])
         preference_data = {
