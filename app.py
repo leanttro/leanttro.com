@@ -546,7 +546,7 @@ def logout():
     logout_user()
     return redirect(url_for('home'))
 
-# --- ROTAS DE SEO (ADICIONADO) ---
+# --- ROTAS DE SEO ---
 @app.route('/sitemap.xml')
 def sitemap():
     """Gera sitemap XML dinâmico para indexação do Google"""
@@ -569,6 +569,11 @@ def sitemap():
             <loc>{base_url}/cadastro</loc>
             <priority>0.8</priority>
         </url>
+        <url>
+            <loc>{base_url}/blog</loc>
+            <changefreq>daily</changefreq>
+            <priority>0.9</priority>
+        </url>
     </urlset>"""
     return Response(xml, mimetype='application/xml')
 
@@ -583,6 +588,59 @@ Disallow: /briefing
 Sitemap: {base_url}/sitemap.xml
 """
     return Response(text, mimetype='text/plain')
+
+# --- ROTAS DE BLOG (NOVO) ---
+@app.route('/blog')
+def blog_index():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        # Pega posts publicados
+        cur.execute("""
+            SELECT title, slug, cover_image, description, published_at 
+            FROM posts 
+            WHERE status = 'published' 
+            ORDER BY published_at DESC
+        """)
+        posts = cur.fetchall()
+        # Tratamento da imagem (adiciona URL do Directus)
+        for p in posts:
+            if p['cover_image']:
+                p['cover_image'] = f"{DIRECTUS_ASSETS_URL}{p['cover_image']}"
+        
+        return render_template('blog.html', posts=posts)
+    except Exception as e:
+        print(f"Erro Blog Index (Tabela não existe?): {e}")
+        # Retorna array vazio para não quebrar se a tabela não existir
+        return render_template('blog.html', posts=[])
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
+
+@app.route('/blog/<slug>')
+def blog_post(slug):
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT title, content, cover_image, published_at, description, keywords 
+            FROM posts 
+            WHERE slug = %s AND status = 'published'
+        """, (slug,))
+        post = cur.fetchone()
+        
+        if not post: abort(404)
+
+        if post['cover_image']:
+            post['cover_image'] = f"{DIRECTUS_ASSETS_URL}{post['cover_image']}"
+            
+        return render_template('post.html', post=post)
+    except Exception as e:
+        print(f"Erro Blog Post: {e}")
+        abort(404)
+    finally:
+        if db_pool and conn: db_pool.putconn(conn)
+        elif conn: conn.close()
 
 # --- ROTAS DE API (BACKEND) ---
 

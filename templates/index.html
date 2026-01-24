@@ -203,6 +203,7 @@
                 <a href="#products" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ SERVIÇOS ]</a>
                 <a href="#cases" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ CASES ]</a>
                 <a href="#why-site" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ POR QUE TER UM SITE? ]</a>
+                <a href="#blog-section" class="font-mono text-sm font-bold text-gray-400 hover:text-ln-neon transition-colors uppercase tracking-widest">[ BLOG ]</a>
             </nav>
 
             <a href="/login" class="hidden md:block bg-white text-black hover:bg-ln-neon px-6 py-2 font-bold uppercase text-sm italic transform skew-x-[-10deg] transition-all">
@@ -219,6 +220,7 @@
         <a href="#products" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Serviços</a>
         <a href="#cases" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Cases</a>
         <a href="#why-site" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Por que ter site?</a>
+        <a href="#blog-section" class="font-mono text-white uppercase font-bold" onclick="this.parentElement.classList.add('hidden')">Blog</a>
         <a href="/login" class="bg-ln-neon text-black text-center py-3 font-bold uppercase italic rounded-sm">Área do Cliente</a>
     </div>
 
@@ -531,6 +533,17 @@
          <div id="cases-grid" class="max-w-[1600px] mx-auto px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10 pb-20">
              </div>
     </section>
+    
+    <section id="blog-section" class="py-24 bg-ln-black relative border-t border-white/10 hidden">
+        <div class="max-w-[1600px] mx-auto px-6 mb-12">
+            <h2 class="text-4xl md:text-6xl font-black italic uppercase text-white mb-2">
+                LATEST <span class="text-ln-neon">INSIGHTS</span>
+            </h2>
+             <p class="font-mono text-gray-400 text-lg">// CONTEÚDO TÉCNICO E ESTRATÉGICO</p>
+        </div>
+        <div id="blog-grid" class="max-w-[1600px] mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8">
+            </div>
+    </section>
 
     <footer class="bg-black border-t border-white/10 py-12">
         <div class="max-w-[1400px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
@@ -805,6 +818,7 @@
             loadCatalogFromDB();
             renderSlides();
             loadCases();
+            loadBlog(); // ADICIONADO: CARREGA O BLOG
         });
 
         // === 2. LÓGICA DE PRODUTOS E CHECKOUT ===
@@ -1108,6 +1122,53 @@
             document.querySelectorAll('.case-scroll-item').forEach(item => {
                 observer.observe(item);
             });
+        }
+        
+        // === 5. BLOG (NOVA FUNÇÃO ADICIONADA) ===
+        async function loadBlog() {
+            try {
+                // Fetch direto da API do Directus para não depender do backend Flask
+                // Pega os 3 últimos posts publicados, ordenados por data
+                const res = await fetch('https://api.leanttro.com/items/posts?filter[status][_eq]=published&sort=-date_created&limit=3');
+                const response = await res.json();
+                const posts = response.data;
+
+                if (!posts || posts.length === 0) return;
+
+                const grid = document.getElementById('blog-grid');
+                const section = document.getElementById('blog-section');
+                
+                // Se tiver posts, mostra a seção (que começa oculta)
+                section.classList.remove('hidden');
+
+                grid.innerHTML = posts.map(post => {
+                    // Monta a URL da imagem. Se não tiver, usa o fallback padrão
+                    const imgUrl = post.cover_image ? `https://api.leanttro.com/assets/${post.cover_image}` : '/static/og-image.jpg';
+                    const dateFmt = new Date(post.date_created).toLocaleDateString('pt-BR');
+                    
+                    return `
+                        <a href="/blog/${post.slug}" class="group relative block bg-ln-carbon border border-white/10 hover:border-ln-neon transition-all overflow-hidden">
+                            <div class="aspect-video overflow-hidden">
+                                <img src="${imgUrl}" alt="${post.title}" class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500 grayscale group-hover:grayscale-0">
+                                <div class="absolute top-2 right-2 bg-black text-ln-neon text-[10px] font-bold px-2 py-1 font-mono uppercase border border-ln-neon/50">
+                                    BLOG // ${dateFmt}
+                                </div>
+                            </div>
+                            <div class="p-6">
+                                <h3 class="text-xl font-black italic text-white uppercase leading-tight mb-4 group-hover:text-ln-neon transition-colors line-clamp-2">${post.title}</h3>
+                                <p class="text-sm text-gray-400 font-mono line-clamp-3 mb-4">${post.description || ''}</p>
+                                <span class="text-xs font-bold uppercase text-white group-hover:text-ln-neon transition-colors flex items-center gap-2">
+                                    LER ARTIGO <i class="fa-solid fa-arrow-right -rotate-45 group-hover:rotate-0 transition-transform"></i>
+                                </span>
+                            </div>
+                        </a>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error("Erro ao carregar blog:", e);
+                // Falha silenciosa para não quebrar o site se a API estiver fora
+            }
         }
     </script>
 </body>
