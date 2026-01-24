@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ post.title }} | Leanttro Blog</title>
+    
+    <meta name="description" content="{{ post.description }}">
+    <meta name="keywords" content="{{ post.keywords }}">
+    
+    <meta property="og:title" content="{{ post.title }}">
+    <meta property="og:description" content="{{ post.description }}">
+    <meta property="og:image" content="{{ post.cover_image }}">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;700&family=Kanit:ital,wght@0,300;0,600;0,800;1,800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Kanit'], mono: ['Chakra Petch'] },
+                    colors: { ln: { neon: '#D2FF00', black: '#050505', carbon: '#111111' } }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-ln-black text-white min-h-screen font-sans selection:bg-ln-neon selection:text-black flex flex-col">
+
+    <header class="fixed w-full z-40 bg-ln-black/90 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-4xl mx-auto px-6 h-20 flex justify-between items-center">
+            <a href="/" class="text-2xl font-black italic tracking-tighter text-white">
+                LEAN<span class="text-ln-neon">TTRO</span>.
+            </a>
+            <a href="/" class="text-xs font-bold uppercase text-gray-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-arrow-left mr-1"></i> VOLTAR
+            </a>
+        </div>
+    </header>
+
+    <main class="flex-grow pt-32 pb-20 px-6">
+        <article class="max-w-3xl mx-auto">
+            
+            <div class="mb-10">
+                <div class="flex items-center gap-3 text-xs font-mono text-ln-neon mb-4">
+                    <span class="bg-ln-neon/10 px-2 py-1 border border-ln-neon/20">BLOG // INSIGHTS</span>
+                    <span>{{ post.published_at.strftime('%d/%m/%Y') if post.published_at else 'HOJE' }}</span>
+                </div>
+                <h1 class="text-3xl md:text-5xl font-black italic uppercase leading-tight mb-6 text-white">
+                    {{ post.title }}
+                </h1>
+            </div>
+
+            {% if post.cover_image %}
+            <div class="w-full aspect-video overflow-hidden mb-12 border border-white/10 relative rounded-sm group">
+                <div class="absolute inset-0 bg-ln-neon/20 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none"></div>
+                <img src="{{ post.cover_image }}" alt="{{ post.title }}" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700">
+            </div>
+            {% endif %}
+
+            <div class="prose prose-invert prose-lg max-w-none 
+                        prose-headings:font-black prose-headings:italic prose-headings:uppercase prose-headings:text-white
+                        prose-p:text-gray-300 prose-p:font-light prose-p:leading-relaxed
+                        prose-strong:text-ln-neon prose-strong:font-bold
+                        prose-a:text-ln-neon prose-a:no-underline hover:prose-a:underline
+                        prose-blockquote:border-ln-neon prose-blockquote:bg-ln-carbon prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:not-italic
+                        prose-li:text-gray-300">
+                
+                {{ post.content | safe }}
+            
+            </div>
+
+            <div class="mt-16 pt-8 border-t border-white/10 flex justify-between items-center">
+                <div class="font-mono text-xs text-gray-500">
+                    // ESCRITO POR LEANTTRO TEAM
+                </div>
+                <div class="flex gap-4">
+                    <a href="https://wa.me/?text=Olha%20esse%20artigo%20top:%20{{ request.url }}" target="_blank" class="text-gray-400 hover:text-ln-neon text-lg"><i class="fa-brands fa-whatsapp"></i></a>
+                    <a href="https://www.linkedin.com/sharing/share-offsite/?url={{ request.url }}" target="_blank" class="text-gray-400 hover:text-ln-neon text-lg"><i class="fa-brands fa-linkedin"></i></a>
+                </div>
+            </div>
+
+        </article>
+    </main>
+
+    <section class="border-t border-white/10 bg-ln-carbon py-12">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <h2 class="text-2xl font-black italic uppercase text-white mb-4">GOSTOU DA ESTRATÉGIA?</h2>
+            <p class="text-gray-400 mb-6 font-mono text-sm">Nós aplicamos exatamente isso no seu negócio. Vamos conversar?</p>
+            <a href="https://wa.me/" class="inline-block bg-ln-neon text-black px-8 py-3 font-black uppercase italic hover:bg-white transition-colors transform skew-x-[-10deg]">
+                <span class="transform skew-x-[10deg] inline-block">AGENDAR CONSULTORIA</span>
+            </a>
+        </div>
+    </section>
+
+</body>
+</html>

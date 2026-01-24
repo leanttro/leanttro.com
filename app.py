@@ -598,7 +598,7 @@ def blog_index():
         # Pega posts publicados
         cur.execute("""
             SELECT title, slug, cover_image, description, published_at 
-            FROM posts 
+            FROM Posts 
             WHERE status = 'published' 
             ORDER BY published_at DESC
         """)
