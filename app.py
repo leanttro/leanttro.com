@@ -6,7 +6,8 @@ import psycopg2
 import psycopg2.extras
 from psycopg2 import pool
 from datetime import datetime, timedelta, date
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory
+# ADICIONADO: 'Response' para servir XML e TXT corretamente
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory, Response
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -544,6 +545,44 @@ def admin_page():
 def logout():
     logout_user()
     return redirect(url_for('home'))
+
+# --- ROTAS DE SEO (ADICIONADO) ---
+@app.route('/sitemap.xml')
+def sitemap():
+    """Gera sitemap XML dinâmico para indexação do Google"""
+    base_url = BASE_URL
+    today = date.today().isoformat()
+    
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+        <url>
+            <loc>{base_url}/</loc>
+            <lastmod>{today}</lastmod>
+            <changefreq>daily</changefreq>
+            <priority>1.0</priority>
+        </url>
+        <url>
+            <loc>{base_url}/login</loc>
+            <priority>0.5</priority>
+        </url>
+        <url>
+            <loc>{base_url}/cadastro</loc>
+            <priority>0.8</priority>
+        </url>
+    </urlset>"""
+    return Response(xml, mimetype='application/xml')
+
+@app.route('/robots.txt')
+def robots():
+    """Diz ao Google o que pode ser lido"""
+    base_url = BASE_URL
+    text = f"""User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /briefing
+Sitemap: {base_url}/sitemap.xml
+"""
+    return Response(text, mimetype='text/plain')
 
 # --- ROTAS DE API (BACKEND) ---
 
