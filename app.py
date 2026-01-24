@@ -6,7 +6,8 @@ import psycopg2
 import psycopg2.extras
 from psycopg2 import pool
 from datetime import datetime, timedelta, date
-# ADICIONADO: 'Response' para servir XML e TXT corretamente
+# ADICIONADO: unicodedata para corrigir o erro de acentuação nos links do blog
+import unicodedata
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file, session, abort, send_from_directory, Response
 from flask_cors import CORS
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -589,16 +590,16 @@ Sitemap: {base_url}/sitemap.xml
 """
     return Response(text, mimetype='text/plain')
 
-# --- ROTAS DE BLOG (CORRIGIDO: TABELA "Posts" COM ASPAS) ---
+# --- ROTAS DE BLOG (CORRIGIDO PARA USO DE ASPAS NA TABELA) ---
 @app.route('/blog')
 def blog_index():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # CRÍTICO: "Posts" deve estar entre aspas duplas para o PostgreSQL aceitar maiúscula
+        # CORREÇÃO: "Posts" com aspas duplas para o PostgreSQL respeitar o case sensitive
         cur.execute("""
             SELECT title, slug, cover_image, description, published_at 
-            FROM "Posts" 
+            FROM "Posts"
             WHERE status = 'published' 
             ORDER BY published_at DESC
         """)
@@ -610,7 +611,8 @@ def blog_index():
         
         return render_template('blog.html', posts=posts)
     except Exception as e:
-        print(f"Erro Blog Index: {e}")
+        print(f"Erro Blog Index (Tabela não existe?): {e}")
+        # Retorna array vazio para não quebrar se a tabela não existir
         return render_template('blog.html', posts=[])
     finally:
         if db_pool and conn: db_pool.putconn(conn)
@@ -618,19 +620,37 @@ def blog_index():
 
 @app.route('/blog/<slug>')
 def blog_post(slug):
+    # --- FIX: Normalização de Slug (CORREÇÃO DO ERRO DE ACENTO) ---
+    # O navegador manda '...%C3%A9...' (é), mas o banco tem 'e'.
+    # Isso normaliza o slug para buscar sem acento primeiro.
+    try:
+        normalized_slug = unicodedata.normalize('NFKD', slug).encode('ASCII', 'ignore').decode('ASCII')
+    except:
+        normalized_slug = slug # Fallback caso falhe
+
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # CRÍTICO: "Posts" deve estar entre aspas duplas
+        
+        # 1. Tenta buscar pelo slug normalizado (sem acento)
         cur.execute("""
             SELECT title, content, cover_image, published_at, description, keywords 
             FROM "Posts" 
             WHERE slug = %s AND status = 'published'
-        """, (slug,))
+        """, (normalized_slug,))
         post = cur.fetchone()
         
+        # 2. Se não achar, tenta com o original (vai que salvaram com acento mesmo)
+        if not post:
+             cur.execute("""
+                SELECT title, content, cover_image, published_at, description, keywords 
+                FROM "Posts" 
+                WHERE slug = %s AND status = 'published'
+            """, (slug,))
+             post = cur.fetchone()
+
         if not post: 
-            print(f"Post não encontrado: {slug}")
+            print(f"Post não encontrado para slug: {slug} (Normalizado tentado: {normalized_slug})")
             abort(404)
 
         if post['cover_image']:
@@ -639,7 +659,7 @@ def blog_post(slug):
         return render_template('post.html', post=post)
     except Exception as e:
         print(f"Erro CRÍTICO no Blog Post: {e}")
-        # Retorna 404 em caso de erro para não vazar info do banco
+        # Retorna 404 em caso de erro SQL (como tabela não encontrada) para não vazar erro interno
         abort(404)
     finally:
         if db_pool and conn: db_pool.putconn(conn)
