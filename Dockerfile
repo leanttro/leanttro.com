@@ -1,21 +1,14 @@
-# Usa uma imagem leve do Python
-FROM python:3.11-slim
+# Usa a imagem oficial do Nginx (versão leve Alpine)
+FROM nginx:alpine
 
-# Define o diretório de trabalho dentro do container
-WORKDIR /app
+# Remove a página padrão do Nginx para limpar a casa
+RUN rm -rf /usr/share/nginx/html/*
 
-# Instala as dependências do sistema necessárias para o Postgres
-RUN apt-get update && apt-get install -y libpq-dev gcc && rm -rf /var/lib/apt/lists/*
+# Copia todos os seus arquivos (index.html e imagens) para a pasta pública do Nginx
+COPY . /usr/share/nginx/html
 
-# Copia os arquivos de requisitos e instala
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Expõe a porta 80 (padrão web)
+EXPOSE 80
 
-# Copia todo o resto do código para dentro da pasta /app
-COPY . .
-
-# Expõe a porta 5000 (Padrão do Flask)
-EXPOSE 5000
-
-# Comando para rodar a aplicação em produção usando Gunicorn
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
+# Inicia o servidor Nginx
+CMD ["nginx", "-g", "daemon off;"]
