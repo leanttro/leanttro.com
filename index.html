@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leanttro Ecosystem</title>
+    <title>Leanttro Ecosystem | Tech & Gifts</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     
     <script>
         tailwind.config = {
@@ -20,67 +20,28 @@
                         sans: ['Inter', 'sans-serif'],
                     },
                     colors: {
-                        apple: {
-                            bg: '#F5F5F7',      /* Cinza Apple Off-white */
-                            text: '#1D1D1F',
-                            gray: '#86868B',
-                        },
                         brand: {
-                            purple: '#7943e3',
-                            hover: '#6836c9'
+                            dark: '#0f172a',    /* Fundo Dark Tech */
+                            purple: '#7c3aed',  /* Roxo Leanttro */
+                            light: '#f8fafc'    /* Fundo Claro */
                         }
                     },
                     animation: {
-                        'fade-up': 'fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'fade-in': 'fadeIn 1s ease-out forwards',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                     },
                     keyframes: {
-                        fadeUp: {
-                            '0%': { opacity: 0, transform: 'translateY(20px)' },
-                            '100%': { opacity: 1, transform: 'translateY(0)' },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
                         }
                     }
                 }
             }
         }
     </script>
-
     <style>
-        body {
-            background-color: #F5F5F7;
-            color: #1D1D1F;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        /* Botões de Acesso Rápido */
-        .quick-btn {
-            background: #F9FAFB; /* Cinza bem clarinho */
-            border: 1px solid rgba(0,0,0,0.05);
-            transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
-        }
-        .quick-btn:hover {
-            background: #FFFFFF;
-            transform: translateY(-2px);
-            border-color: #7943e3;
-            box-shadow: 0 10px 30px rgba(121, 67, 227, 0.10);
-            color: #7943e3;
-        }
-
-        /* Bento Grid Cards */
-        .bento-card {
-            background: #FFFFFF;
-            border-radius: 24px;
-            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.4s ease;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
-            overflow: hidden;
-            position: relative;
-        }
-        .bento-card:hover {
-            transform: scale(1.01);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
-            z-index: 10;
-        }
-
-        /* Animação Scroll */
+        /* Estilos adicionais para garantir compatibilidade */
         .reveal {
             opacity: 0;
             transform: translateY(30px);
@@ -92,139 +53,164 @@
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="bg-[#F5F5F7] text-slate-800 min-h-screen flex flex-col font-sans">
 
-    <header class="w-full bg-white pt-16 pb-16 px-6 flex flex-col items-center justify-center animate-fade-up border-b border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] relative z-20">
-        
-        <div class="mb-8 hover:scale-105 transition-transform duration-500">
-            <img src="logo.png" alt="Leanttro Logo" class="h-16 md:h-20 w-auto object-contain">
+    <header class="w-full py-6 px-6 bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                {% if loja and loja.logo %}
+                    <img src="{{ loja.logo }}" class="h-10 w-auto object-contain" alt="{{ loja.nome }}">
+                {% else %}
+                    <span class="text-2xl font-black tracking-tighter text-slate-900">LEANTTRO<span class="text-brand-purple">.</span></span>
+                {% endif %}
+            </div>
+
+            <div class="flex gap-3">
+                <a href="https://instagram.com/leanttro" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-[#E1306C] hover:shadow-md transition-all">
+                    <i data-lucide="instagram" class="w-5 h-5"></i>
+                </a>
+                <a href="https://wa.me/{{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-green-600 hover:shadow-md transition-all">
+                    <i data-lucide="message-circle" class="w-5 h-5"></i>
+                </a>
+                 {% if loja and loja.whatsapp %}
+                <a href="/{{ loja.slug_url }}/admin/painel" class="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-all">
+                    <i data-lucide="lock" class="w-3 h-3"></i> Área do Cliente
+                </a>
+                {% endif %}
+            </div>
         </div>
-
-        <div class="flex gap-4 mb-10">
-            <a href="https://wa.me/5511913324827" target="_blank" class="p-3 bg-gray-50 rounded-full text-apple-text hover:text-green-600 hover:bg-white hover:shadow-md transition-all duration-300 shadow-sm border border-gray-100">
-                <i data-lucide="message-circle" class="w-5 h-5"></i>
-            </a>
-            <a href="https://instagram.com/leanttro" target="_blank" class="p-3 bg-gray-50 rounded-full text-apple-text hover:text-[#E1306C] hover:bg-white hover:shadow-md transition-all duration-300 shadow-sm border border-gray-100">
-                <i data-lucide="instagram" class="w-5 h-5"></i>
-            </a>
-            <a href="mailto:comercial@leanttro.com" target="_blank" class="p-3 bg-gray-50 rounded-full text-apple-text hover:text-brand-purple hover:bg-white hover:shadow-md transition-all duration-300 shadow-sm border border-gray-100">
-                <i data-lucide="mail" class="w-5 h-5"></i>
-            </a>
-        </div>
-
-        <div class="flex flex-col md:flex-row gap-4 w-full max-w-lg">
-            
-            <a href="https://www.leanttro.com/tecnologia" class="quick-btn w-full py-5 px-6 rounded-2xl flex items-center justify-between group">
-                <div class="flex items-center gap-4">
-                    <div class="bg-white p-2.5 rounded-xl border border-gray-100 group-hover:bg-brand-purple group-hover:border-brand-purple group-hover:text-white transition-colors shadow-sm">
-                        <i data-lucide="monitor" class="w-6 h-6"></i>
-                    </div>
-                    <div class="text-left">
-                        <span class="font-bold text-apple-text block text-base group-hover:text-brand-purple transition-colors">Soluções Digitais</span>
-                        <span class="text-xs text-gray-400 font-medium">Sites & Softwares</span>
-                    </div>
-                </div>
-                <i data-lucide="arrow-right" class="w-5 h-5 text-gray-300 group-hover:text-brand-purple transition-colors"></i>
-            </a>
-
-            <a href="https://www.leanttro.com/presentes" class="quick-btn w-full py-5 px-6 rounded-2xl flex items-center justify-between group">
-                <div class="flex items-center gap-4">
-                    <div class="bg-white p-2.5 rounded-xl border border-gray-100 group-hover:bg-brand-purple group-hover:border-brand-purple group-hover:text-white transition-colors shadow-sm">
-                        <i data-lucide="shopping-bag" class="w-6 h-6"></i>
-                    </div>
-                    <div class="text-left">
-                        <span class="font-bold text-apple-text block text-base group-hover:text-brand-purple transition-colors">Loja Online</span>
-                        <span class="text-xs text-gray-400 font-medium">Presentes & Brindes</span>
-                    </div>
-                </div>
-                <i data-lucide="arrow-right" class="w-5 h-5 text-gray-300 group-hover:text-brand-purple transition-colors"></i>
-            </a>
-        </div>
-
     </header>
 
-    <section class="px-6 pt-12 pb-24 bg-apple-bg">
-        <div class="max-w-[980px] mx-auto text-center">
+    <main class="flex-grow flex flex-col justify-center px-4 py-8 md:py-12">
+        <div class="max-w-6xl mx-auto w-full">
             
-            <h1 class="text-3xl md:text-5xl font-bold tracking-tight mb-4 reveal text-apple-text leading-tight">
-                Sou a conexão entre a <span style="color: #7943e3;">tecnologia</span> <br class="hidden md:block"> 
-                e brindes que <span style="color: #7943e3;">encantam.</span>
-            </h1>
-            
-            <p class="text-lg text-apple-gray font-medium max-w-2xl mx-auto leading-relaxed mb-16 reveal">
-                Integramos tecnologia de alta performance e varejo físico em uma única plataforma.
-            </p>
+            <div class="text-center mb-12 md:mb-16 space-y-4 animate-fade-in">
+                <h1 class="text-4xl md:text-6xl font-black tracking-tight text-slate-900 leading-[1.1]">
+                    Onde o Código encontra <br class="hidden md:block">
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-500">
+                        o Mundo Real.
+                    </span>
+                </h1>
+                <p class="text-lg text-slate-500 max-w-2xl mx-auto font-medium">
+                    Um ecossistema completo: Desenvolvimento de Software de alta performance e Produtos Físicos personalizados.
+                </p>
+            </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[550px]">
                 
-                <a href="https://www.leanttro.com/tecnologia" class="bento-card group col-span-1 md:row-span-2 min-h-[400px] flex flex-col justify-between p-8 md:p-10 reveal">
-                    <div class="relative z-10">
-                        <div class="inline-block px-3 py-1 rounded-full bg-gray-100 text-xs font-bold text-gray-500 uppercase tracking-widest mb-6">
-                            B2B & Tech
+                <a href="https://www.leanttro.com/tecnologia" class="group relative col-span-1 md:col-span-7 rounded-3xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01] bg-slate-900 flex flex-col justify-end p-8 md:p-12 text-white border border-slate-800 reveal">
+                    
+                    <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#0f0518] to-black z-0"></div>
+                    <div class="absolute -top-20 -right-20 w-96 h-96 bg-purple-600 rounded-full mix-blend-screen filter blur-[100px] opacity-20 animate-pulse-slow"></div>
+                    <div class="absolute bottom-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 z-0"></div>
+
+                    <div class="relative z-10 space-y-4">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-wider text-purple-300 backdrop-blur-sm">
+                            <i data-lucide="cpu" class="w-3 h-3"></i> Software House
                         </div>
                         
-                        <div class="mb-4 h-12 flex items-center">
-                             <img src="logotecnologia.png" alt="Leanttro Tecnologia" class="h-full object-contain max-w-[200px]">
-                        </div>
-                        
-                        <p class="text-gray-500 font-medium text-sm md:text-base max-w-xs leading-relaxed mt-4">
-                            Criação de sites institucionais, sistemas SaaS, automação com IA e soluções digitais sob medida para escalar seu negócio.
+                        <h2 class="text-3xl md:text-5xl font-bold tracking-tight">Leanttro Tech</h2>
+                        <p class="text-slate-400 max-w-md text-sm md:text-base leading-relaxed">
+                            Desenvolvimento de Sites, Apps, SaaS e Automação com Inteligência Artificial. Transformamos processos complexos em código limpo.
                         </p>
-                    </div>
-                    
-                    <div class="mt-8 relative w-full h-48 bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 group-hover:shadow-inner transition-all">
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <i data-lucide="code-2" class="w-20 h-20 text-gray-200 group-hover:text-brand-purple transition-colors duration-500 group-hover:scale-110"></i>
+                        
+                        <div class="pt-4">
+                            <span class="inline-flex items-center text-white font-bold bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl transition-all shadow-lg shadow-purple-900/20 group-hover:pl-8">
+                                Conhecer Soluções <i data-lucide="arrow-right" class="w-5 h-5 ml-2"></i>
+                            </span>
                         </div>
                     </div>
+
+                    <i data-lucide="terminal-square" class="absolute top-10 right-10 text-white/5 w-32 h-32 group-hover:rotate-12 transition-transform duration-700"></i>
                 </a>
 
-                <a href="https://www.leanttro.com/presentes" class="bento-card group p-8 md:p-10 min-h-[220px] flex flex-col justify-center reveal transition-delay-100">
-                    <div class="flex justify-between items-start h-full flex-col md:flex-row md:items-center">
-                        <div class="max-w-xs">
-                            <div class="mb-4 h-10 flex items-center">
-                                <img src="logopresentes.png" alt="Leanttro Presentes" class="h-full object-contain max-w-[180px]">
-                            </div>
-                            
-                            <p class="text-gray-500 text-sm font-medium">
-                                Varejo de presentes criativos, utilitários e brindes corporativos.
-                            </p>
-                        </div>
-                        <div class="bg-gray-50 p-4 rounded-full mt-4 md:mt-0 group-hover:bg-brand-purple group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <i data-lucide="shopping-cart" class="w-6 h-6"></i>
+                <a href="https://www.leanttro.com/presentes" class="group relative col-span-1 md:col-span-5 rounded-3xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01] bg-gray-100 flex flex-col justify-between p-8 md:p-10 text-white border border-gray-200 reveal transition-delay-100">
+                    
+                    <div class="absolute inset-0 z-0">
+                        <img src="https://images.unsplash.com/photo-1602143407151-11115cd4e69b?q=80&w=1000&auto=format&fit=crop" 
+                             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0" 
+                             alt="Garrafa Leanttro">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
+                    </div>
+
+                    <div class="relative z-10">
+                         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-white">
+                            <i data-lucide="gift" class="w-3 h-3"></i> Loja Online
                         </div>
                     </div>
-                </a>
 
-                <a href="/qrcodebrindes" class="bento-card group p-8 md:p-10 min-h-[220px] bg-black text-white overflow-hidden relative reveal transition-delay-200">
-                    <div class="absolute top-0 right-0 w-[250px] h-[250px] bg-brand-purple/30 rounded-full blur-[90px] transform translate-x-1/2 -translate-y-1/2 group-hover:bg-brand-purple/50 transition-colors duration-700"></div>
-                    
-                    <div class="relative z-10 h-full flex flex-col justify-between">
-                        <div>
-                            <div class="flex items-center gap-2 mb-3">
-                                <i data-lucide="instagram" class="w-4 h-4 text-brand-purple"></i>
-                                <span class="text-xs font-bold text-brand-purple uppercase tracking-widest">@qrcodebrindes</span>
-                            </div>
-                            <h2 class="text-2xl md:text-3xl font-bold mb-2 text-white">QR Code Brindes</h2>
-                            <p class="text-gray-400 text-sm font-medium max-w-xs">
-                                Brindes inteligentes de diversos nichos. O físico conectando ao seu digital.
-                            </p>
-                        </div>
-                        <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-widest mt-6 group-hover:gap-4 transition-all text-white">
-                            Acessar <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                        </div>
+                    <div class="relative z-10 mt-auto text-right md:text-left">
+                        <h2 class="text-3xl md:text-4xl font-bold mb-2">Leanttro Gifts</h2>
+                        <p class="text-gray-200 text-sm md:text-base leading-tight font-medium mb-4">
+                            Kits corporativos premium e personalização a laser.
+                        </p>
+                        <span class="inline-flex items-center text-white text-sm font-bold border-b border-white pb-0.5 hover:text-purple-300 hover:border-purple-300 transition-colors">
+                            Ver Catálogo <i data-lucide="shopping-bag" class="w-4 h-4 ml-2"></i>
+                        </span>
                     </div>
                 </a>
 
             </div>
 
+            <div class="mt-6 grid grid-cols-1 animate-fade-in reveal transition-delay-200">
+                <a href="/qrcodebrindes" class="relative w-full rounded-2xl bg-white border border-gray-200 p-6 md:p-8 flex flex-col md:flex-row items-center justify-between hover:border-purple-500 hover:shadow-xl hover:shadow-purple-500/10 transition-all group overflow-hidden">
+                    
+                    <div class="flex items-center gap-6 relative z-10 mb-4 md:mb-0">
+                        <div class="p-4 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                            <i data-lucide="qr-code" class="w-8 h-8"></i>
+                        </div>
+                        <div class="text-center md:text-left">
+                            <h3 class="text-xl font-bold text-slate-800">Identidade Digital (SOS & QR Codes)</h3>
+                            <p class="text-slate-500 text-sm">Nossa tecnologia conectando objetos físicos a dados digitais.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 px-6 py-3 bg-slate-50 rounded-xl text-sm font-bold text-slate-700 group-hover:bg-purple-50 group-hover:text-purple-700 transition-colors">
+                        Conhecer Projetos <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </div>
+                </a>
+            </div>
+
+        </div>
+    </main>
+
+    {% if produtos %}
+    <section class="py-16 bg-white border-t border-gray-100">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="flex justify-between items-end mb-8">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-900">Destaques da Loja</h2>
+                    <p class="text-slate-500 text-sm">Os produtos mais vendidos da semana</p>
+                </div>
+                <a href="https://www.leanttro.com/presentes" class="text-purple-600 font-bold text-sm hover:underline">Ver todos</a>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                {% for prod in produtos[:4] %}
+                <a href="https://www.leanttro.com/presentes" class="group block">
+                    <div class="relative bg-gray-50 rounded-2xl overflow-hidden aspect-square mb-4">
+                        <img src="{{ prod.imagem }}" alt="{{ prod.nome }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                         {% if prod.urgencia == 'Alta' %}
+                        <div class="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">
+                            Últimas Unidades
+                        </div>
+                        {% endif %}
+                    </div>
+                    <h3 class="font-bold text-slate-800 group-hover:text-purple-600 transition-colors line-clamp-1">{{ prod.nome }}</h3>
+                    <p class="text-slate-500 text-sm">
+                        {% if prod.preco %}R$ {{ "%.2f"|format(prod.preco) }}{% else %}Consulte{% endif %}
+                    </p>
+                </a>
+                {% endfor %}
+            </div>
         </div>
     </section>
+    {% endif %}
 
     <footer class="bg-white border-t border-gray-100 py-8 px-6 mt-auto">
-        <div class="max-w-[980px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
             <p class="text-xs text-gray-400 font-medium">
-                © 2026 Leanttro Ecosystem. Todos os direitos reservados.
+                © 2026 Leanttro Ecosystem. São Paulo, Brasil. CNPJ: 57.996.112/0001-66
             </p>
             <div class="flex gap-4">
                 <a href="#" class="text-xs text-gray-400 hover:text-brand-purple transition-colors">Termos de Uso</a>
