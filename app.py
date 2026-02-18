@@ -25,7 +25,7 @@ CEP_ORIGEM = "01026000" # CEP da 25 de Março (Padrão de envio)
 # Usado se o Directus falhar ou não houver loja configurada
 LOJA_PADRAO = {
     "nome": "Leanttro Ecosystem",
-    "logo": "https://leanttro.com/static/img/logo-placeholder.png", # Coloque um link de logo provisório se quiser
+    "logo": "https://leanttro.com/static/img/logo-placeholder.png", 
     "cor_primaria": "#7c3aed",
     "whatsapp": "5511913324827",
     "slug_url": "painel",
@@ -48,7 +48,7 @@ DIMENSOES = {
 def get_img_url(image_id_or_url):
     """Converte ID do Directus em URL completa ou retorna placeholder"""
     if not image_id_or_url:
-        return "" # Retorna vazio para o template tratar ou usar placeholder lá
+        return "" 
     
     # Se for um dicionário (objeto retornado pelo Directus)
     if isinstance(image_id_or_url, dict):
@@ -140,16 +140,11 @@ def index():
     # Renderiza o index.html com os dados
     return render_template('index.html', loja=loja, produtos=produtos)
 
-# --- ROTA: TECNOLOGIA (Landing Page Digital) ---
+# --- ROTA: TECNOLOGIA (Link Externo) ---
 @app.route('/tecnologia')
 def tecnologia():
-    loja = get_loja_data()
-    # Verifica se o template existe, se não, usa um fallback ou erro amigável
-    try:
-        return render_template('tecnologia.html', loja=loja)
-    except Exception as e:
-        print(f"Erro template tecnologia: {e}")
-        return "<h1>Página em Construção</h1><p>O arquivo tecnologia.html não foi encontrado.</p>", 404
+    # Redireciona para o link que você pediu
+    return redirect("https://leanttro.com/tecnologia/", code=302)
 
 # --- ROTA: PRESENTES (Loja Online Completa) ---
 @app.route('/presentes')
@@ -195,20 +190,17 @@ def presentes():
     except Exception as e:
         print(f"Erro Produtos Loja: {e}")
 
-    # Renderiza o template da loja (pode ser o mesmo index com flag ou um 'loja.html')
-    # Assumindo que você usa index.html para tudo, passamos uma flag 'modo_loja'
     return render_template('index.html', loja=loja, categorias=categorias, produtos=produtos, modo_loja=True)
 
 # --- ROTA: IDENTIDADE DIGITAL / QR CODE ---
 @app.route('/qrcodebrindes')
 def qrcode():
     loja = get_loja_data()
-    return render_template('index.html', loja=loja, qrcode_mode=True) # Pode criar um template específico depois
+    return render_template('index.html', loja=loja, qrcode_mode=True) 
 
 # --- ROTA: PRODUTO DETALHE ---
 @app.route('/produto/<slug>')
 def produto(slug):
-    # Por enquanto retorna simples para não quebrar se não tiver template
     return f"<h1>Detalhe do Produto: {slug}</h1><p>Em desenvolvimento...</p>"
 
 # --- ROTA: API FRETE (CÁLCULO) ---
@@ -268,13 +260,12 @@ def calcular_frete():
         cotacoes = response.json()
         opcoes = []
         
-        # Tratamento do retorno da API (que as vezes muda formato)
         lista_retorno = []
         if isinstance(cotacoes, list):
             lista_retorno = cotacoes
         elif isinstance(cotacoes, dict):
              lista_retorno = cotacoes.get('shipping_options', [])
-             if not lista_retorno and 'id' in cotacoes: lista_retorno = [cotacoes] # Retorno único
+             if not lista_retorno and 'id' in cotacoes: lista_retorno = [cotacoes] 
 
         for c in lista_retorno:
             if isinstance(c, dict) and ('error' in c and c['error']): continue
@@ -287,8 +278,8 @@ def calcular_frete():
                 opcoes.append({
                     "servico": nome,
                     "transportadora": "Correios", 
-                    "preco": float(preco) + 4.00, # Taxa de manuseio opcional
-                    "prazo": int(prazo) + 2 # Margem de segurança
+                    "preco": float(preco) + 4.00, 
+                    "prazo": int(prazo) + 2 
                 })
 
         opcoes.sort(key=lambda x: x['preco'])
@@ -300,5 +291,4 @@ def calcular_frete():
         return jsonify({"erro": "Erro ao calcular frete", "msg": str(e)}), 500
 
 if __name__ == '__main__':
-    # Roda na porta 5000 (Padrão Flask)
     app.run(debug=True, host='0.0.0.0', port=5000)
