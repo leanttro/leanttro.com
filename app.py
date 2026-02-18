@@ -25,7 +25,7 @@ CEP_ORIGEM = "01026000" # CEP da 25 de Março (Padrão de envio)
 # Usado se o Directus falhar ou não houver loja configurada
 LOJA_PADRAO = {
     "nome": "Leanttro Ecosystem",
-    "logo": "https://i.imgur.com/6U868d3.png", # Logo genérica ou vazia
+    "logo": "https://leanttro.com/static/img/logo-placeholder.png", # Coloque um link de logo provisório se quiser
     "cor_primaria": "#7c3aed",
     "whatsapp": "5511913324827",
     "slug_url": "painel",
