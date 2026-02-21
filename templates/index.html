@@ -7,6 +7,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,6 +52,30 @@
             opacity: 1;
             transform: translateY(0);
         }
+        
+        /* Estilos do Carrossel Swiper */
+        .swiper {
+            width: 100%;
+            padding-top: 20px;
+            padding-bottom: 50px;
+        }
+        .swiper-slide {
+            background-position: center;
+            background-size: cover;
+            width: 280px;
+            height: 480px;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        @media (min-width: 768px) {
+            .swiper-slide {
+                width: 320px;
+                height: 540px;
+            }
+        }
+        .swiper-pagination-bullet-active {
+            background-color: #7c3aed !important;
+        }
     </style>
 </head>
 <body class="bg-[#F5F5F7] text-slate-800 min-h-screen flex flex-col font-sans">
@@ -72,11 +97,6 @@
                 <a href="https://wa.me/{{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-green-600 hover:shadow-md transition-all">
                     <i data-lucide="message-circle" class="w-5 h-5"></i>
                 </a>
-                 {% if loja and loja.whatsapp %}
-                <a href="/{{ loja.slug_url }}/admin/painel" class="hidden md:flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 transition-all">
-                    <i data-lucide="lock" class="w-3 h-3"></i> Área do Cliente
-                </a>
-                {% endif %}
             </div>
         </div>
     </header>
@@ -115,6 +135,98 @@
 
     <main class="flex-grow flex flex-col justify-center px-4 py-8 md:py-12">
         <div class="max-w-6xl mx-auto w-full">
+
+            <div class="w-full mb-16 animate-fade-in reveal">
+                <div class="text-center mb-8">
+                    <h2 class="text-2xl font-bold text-slate-800">Conheça Nossos Projetos</h2>
+                    <p class="text-slate-500 text-sm mt-1">Dê o play e veja os bastidores na prática</p>
+                </div>
+                
+                <div class="swiper mySwiper">
+                    <div class="swiper-wrapper">
+                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                            <a href="https://www.instagram.com/p/DU_Eu_GDb2F/" target="_blank" class="block w-full h-full relative">
+                                <img src="https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=600&auto=format&fit=crop" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 1">
+                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                    </div>
+                                </div>
+                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                                </div>
+                            </a>
+                        </div>
+                        
+                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                            <a href="https://www.instagram.com/p/DU88pUtEgfy/" target="_blank" class="block w-full h-full relative">
+                                <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=600&auto=format&fit=crop" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 2">
+                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                    </div>
+                                </div>
+                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                                </div>
+                            </a>
+                        </div>
+                        
+                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                            <a href="https://www.instagram.com/p/DU3KVWJjWsf/" target="_blank" class="block w-full h-full relative">
+                                <img src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?q=80&w=600&auto=format&fit=crop" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 3">
+                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                    </div>
+                                </div>
+                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                                </div>
+                            </a>
+                        </div>
+                        
+                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                            <a href="https://www.instagram.com/p/DUlWUyajblf/" target="_blank" class="block w-full h-full relative">
+                                <img src="https://images.unsplash.com/photo-1555421689-491a97ff2040?q=80&w=600&auto=format&fit=crop" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 4">
+                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                    </div>
+                                </div>
+                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                                </div>
+                            </a>
+                        </div>
+
+                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                            <a href="https://www.instagram.com/p/DUqlGELjeIQ/" target="_blank" class="block w-full h-full relative">
+                                <img src="https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?q=80&w=600&auto=format&fit=crop" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 5">
+                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                    </div>
+                                </div>
+                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="swiper-pagination mt-4"></div>
+                </div>
+            </div>
 
             <div class="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[550px]">
                 
@@ -239,6 +351,12 @@
         </div>
     </footer>
 
+    <a href="https://wa.me/{{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="fixed bottom-6 right-6 bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 hover:shadow-[#25D366]/30 transition-all z-50 flex items-center justify-center group">
+        <i data-lucide="message-circle" class="w-8 h-8"></i>
+        <span class="absolute right-full mr-4 bg-white text-slate-800 text-sm font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg pointer-events-none">Falar com Lelis</span>
+    </a>
+
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <script>
         lucide.createIcons();
 
@@ -251,6 +369,31 @@
         }, { threshold: 0.1 });
 
         document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Inicialização do Carrossel 3D
+        var swiper = new Swiper(".mySwiper", {
+            effect: "coverflow",
+            grabCursor: true,
+            centeredSlides: true,
+            slidesPerView: "auto",
+            initialSlide: 0,
+            loop: true,
+            coverflowEffect: {
+                rotate: 20,
+                stretch: 0,
+                depth: 150,
+                modifier: 1,
+                slideShadows: true,
+            },
+            pagination: {
+                el: ".swiper-pagination",
+                clickable: true,
+            },
+            autoplay: {
+                delay: 4000,
+                disableOnInteraction: false,
+            }
+        });
     </script>
 </body>
 </html>
