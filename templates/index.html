@@ -1,399 +1,400 @@
 <!DOCTYPE html>
+
 <html lang="pt-br" class="scroll-smooth">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leanttro Ecosystem | Tech & Gifts</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        brand: {
-                            dark: '#0f172a',    /* Fundo Dark Tech */
-                            purple: '#7c3aed',  /* Roxo Leanttro */
-                            light: '#f8fafc'    /* Fundo Claro */
-                        }
-                    },
-                    animation: {
-                        'fade-in': 'fadeIn 1s ease-out forwards',
-                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    },
-                    keyframes: {
-                        fadeIn: {
-                            '0%': { opacity: '0', transform: 'translateY(10px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
-                        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leanttro Ecosystem | Tech & Gifts</title>
+
+<script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
+<script src="[https://unpkg.com/lucide@latest](https://unpkg.com/lucide@latest)"></script>
+<link rel="stylesheet" href="[https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css](https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css)" />
+
+<link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
+<link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
+<link href="[https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap)" rel="stylesheet">
+
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                },
+                colors: {
+                    brand: {
+                        dark: '#0f172a',    /* Fundo Dark Tech */
+                        purple: '#7c3aed',  /* Roxo Leanttro */
+                        light: '#f8fafc'    /* Fundo Claro */
+                    }
+                },
+                animation: {
+                    'fade-in': 'fadeIn 1s ease-out forwards',
+                    'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                },
+                keyframes: {
+                    fadeIn: {
+                        '0%': { opacity: '0', transform: 'translateY(10px)' },
+                        '100%': { opacity: '1', transform: 'translateY(0)' },
                     }
                 }
             }
         }
-    </script>
-    <style>
-        /* Estilos adicionais para garantir compatibilidade */
-        .reveal {
-            opacity: 0;
-            transform: translateY(30px);
-            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .reveal.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        
-        /* Estilos do Carrossel Swiper */
-        .swiper {
-            width: 100%;
-            padding-top: 20px;
-            padding-bottom: 50px;
-        }
+    }
+</script>
+<style>
+    /* Estilos adicionais para garantir compatibilidade */
+    .reveal {
+        opacity: 0;
+        transform: translateY(30px);
+        transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .reveal.active {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    
+    /* Estilos do Carrossel Swiper */
+    .swiper {
+        width: 100%;
+        padding-top: 20px;
+        padding-bottom: 50px;
+    }
+    .swiper-slide {
+        background-position: center;
+        background-size: cover;
+        width: 280px;
+        height: 480px;
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    @media (min-width: 768px) {
         .swiper-slide {
-            background-position: center;
-            background-size: cover;
-            width: 280px;
-            height: 480px;
-            border-radius: 16px;
-            overflow: hidden;
+            width: 320px;
+            height: 540px;
         }
-        @media (min-width: 768px) {
-            .swiper-slide {
-                width: 320px;
-                height: 540px;
-            }
-        }
-        .swiper-pagination-bullet-active {
-            background-color: #7c3aed !important;
-        }
-    </style>
+    }
+    .swiper-pagination-bullet-active {
+        background-color: #7c3aed !important;
+    }
+</style>
 </head>
 <body class="bg-[#F5F5F7] text-slate-800 min-h-screen flex flex-col font-sans">
 
-    <header class="w-full py-6 px-6 bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                {% if loja and loja.logo %}
-                    <img src="{{ loja.logo }}" class="h-10 w-auto object-contain" alt="{{ loja.nome }}">
-                {% else %}
-                    <span class="text-2xl font-black tracking-tighter text-slate-900">LEANTTRO<span class="text-brand-purple">.</span></span>
-                {% endif %}
-            </div>
-
-            <div class="flex gap-3">
-                <a href="https://instagram.com/leanttro" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-[#E1306C] hover:shadow-md transition-all">
-                    <i data-lucide="instagram" class="w-5 h-5"></i>
-                </a>
-                <a href="https://wa.me/{{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-green-600 hover:shadow-md transition-all">
-                    <i data-lucide="message-circle" class="w-5 h-5"></i>
-                </a>
-            </div>
-        </div>
-    </header>
-
-    <section class="w-full bg-[#7943e2] pt-16 pb-20 px-4 flex flex-col items-center justify-center text-center animate-fade-in shadow-md">
-        <div class="relative inline-block mb-6">
-            <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771680696/Design_sem_nome_43_yhffam.png" alt="Lelis" class="w-32 h-32 rounded-full border-4 border-white object-cover shadow-xl">
-            <div class="absolute bottom-1 right-1 bg-blue-500 text-white rounded-full p-1 border-2 border-white flex items-center justify-center">
-                <i data-lucide="badge-check" class="w-6 h-6 fill-current"></i>
-            </div>
-        </div>
-        
-        <div class="mb-4">
-            <span class="text-3xl font-black tracking-tighter text-white">LEANTTRO<span class="text-white/80">.</span></span>
+<header class="w-full py-6 px-6 bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            {% if loja and loja.logo %}
+                <img src="{{ loja.logo }}" class="h-10 w-auto object-contain" alt="{{ loja.nome }}">
+            {% else %}
+                <span class="text-2xl font-black tracking-tighter text-slate-900">LEANTTRO<span class="text-brand-purple">.</span></span>
+            {% endif %}
         </div>
 
-        <div class="mb-10 flex flex-col items-center gap-4">
-            <a href="https://instagram.com/lelisgifts" target="_blank" class="flex items-center gap-2 text-xl font-medium text-white hover:text-white/80 transition-colors">
-                <i data-lucide="instagram" class="w-6 h-6"></i> @lelisgifts
+        <div class="flex gap-3">
+            <a href="[https://instagram.com/leanttro](https://instagram.com/leanttro)" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-[#E1306C] hover:shadow-md transition-all">
+                <i data-lucide="instagram" class="w-5 h-5"></i>
             </a>
-            <a href="https://instagram.com/lelisgifts" target="_blank" class="px-8 py-3 bg-white text-[#7943e2] font-bold rounded-full hover:bg-gray-100 transition-all shadow-lg text-sm uppercase tracking-wide">
-                Acessar Instagram
+            <a href="[https://wa.me/](https://wa.me/){{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="p-2 bg-gray-50 rounded-full text-slate-600 hover:text-green-600 hover:shadow-md transition-all">
+                <i data-lucide="message-circle" class="w-5 h-5"></i>
             </a>
         </div>
+    </div>
+</header>
 
-        <div class="max-w-4xl mx-auto space-y-4">
-            <h1 class="text-4xl md:text-6xl font-black tracking-tight text-white leading-[1.1]">
-                Onde o Código encontra <br class="hidden md:block">
-                o Mundo Real.
-            </h1>
-            <p class="text-lg md:text-xl text-white/90 max-w-2xl mx-auto font-medium">
-                Um ecossistema completo: Desenvolvimento de Software de alta performance e Produtos Físicos personalizados.
-            </p>
+<section class="w-full bg-[#7943e2] pt-16 pb-20 px-4 flex flex-col items-center justify-center text-center animate-fade-in shadow-md">
+    <div class="relative inline-block mb-6">
+        <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771680696/Design_sem_nome_43_yhffam.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771680696/Design_sem_nome_43_yhffam.png)" alt="Lelis" class="w-32 h-32 rounded-full border-4 border-white object-cover shadow-xl">
+        <div class="absolute bottom-1 right-1 bg-blue-500 text-white rounded-full p-1 border-2 border-white flex items-center justify-center">
+            <i data-lucide="badge-check" class="w-6 h-6 fill-current"></i>
         </div>
-    </section>
+    </div>
+    
+    <div class="mb-4">
+        <span class="text-3xl font-black tracking-tighter text-white">LEANTTRO<span class="text-white/80">.</span></span>
+    </div>
 
-    <main class="flex-grow flex flex-col justify-center px-4 py-8 md:py-12">
-        <div class="max-w-6xl mx-auto w-full">
+    <div class="mb-10 flex flex-col items-center gap-4">
+        <a href="[https://instagram.com/lelisgifts](https://instagram.com/lelisgifts)" target="_blank" class="flex items-center gap-2 text-xl font-medium text-white hover:text-white/80 transition-colors">
+            <i data-lucide="instagram" class="w-6 h-6"></i> @lelisgifts
+        </a>
+        <a href="[https://instagram.com/lelisgifts](https://instagram.com/lelisgifts)" target="_blank" class="px-8 py-3 bg-white text-[#7943e2] font-bold rounded-full hover:bg-gray-100 transition-all shadow-lg text-sm uppercase tracking-wide">
+            Acessar Instagram
+        </a>
+    </div>
 
-            <div class="w-full mb-16 animate-fade-in reveal">
-                <div class="text-center mb-8">
-                    <h2 class="text-2xl font-bold text-slate-800">O que rola nas Redes</h2>
-                    <p class="text-slate-500 text-sm mt-1">Dê o play e veja os bastidores na prática</p>
-                </div>
-                
-                <div class="swiper mySwiper">
-                    <div class="swiper-wrapper">
-                        
-                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
-                            <a href="https://www.instagram.com/p/DU_Eu_GDb2F/" target="_blank" class="block w-full h-full relative">
-                                <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682469/8ec9cac7-a0b5-4813-ac2d-4e6a4ba16fbc.png" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 1">
-                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
-                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
-                                    </div>
-                                </div>
-                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
-                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
-                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
-                                </div>
-                            </a>
-                        </div>
-                        
-                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
-                            <a href="https://www.instagram.com/p/DU88pUtEgfy/" target="_blank" class="block w-full h-full relative">
-                                <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682592/d423c866-c241-4469-9028-e9958b20cc4e.png" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 2">
-                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
-                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
-                                    </div>
-                                </div>
-                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
-                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
-                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
-                                </div>
-                            </a>
-                        </div>
-                        
-                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
-                            <a href="https://www.instagram.com/p/DU3KVWJjWsf/" target="_blank" class="block w-full h-full relative">
-                                <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682717/70ddbd36-f003-42a2-94d1-cae9c9ab7a0e.png" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 3">
-                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
-                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
-                                    </div>
-                                </div>
-                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
-                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
-                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
-                                </div>
-                            </a>
-                        </div>
-                        
-                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
-                            <a href="https://www.instagram.com/p/DUlWUyajblf/" target="_blank" class="block w-full h-full relative">
-                                <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682751/1cbbcb8d-83a7-4255-a2a9-8e7d08d95a81.png" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 4">
-                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
-                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
-                                    </div>
-                                </div>
-                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
-                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
-                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
-                                </div>
-                            </a>
-                        </div>
+    <div class="max-w-4xl mx-auto space-y-4">
+        <h1 class="text-4xl md:text-6xl font-black tracking-tight text-white leading-[1.1]">
+            Onde o Código encontra <br class="hidden md:block">
+            o Mundo Real.
+        </h1>
+        <p class="text-lg md:text-xl text-white/90 max-w-2xl mx-auto font-medium">
+            Um ecossistema completo: Desenvolvimento de Software de alta performance e Produtos Físicos personalizados.
+        </p>
+    </div>
+</section>
 
-                        <div class="swiper-slide bg-slate-900 group shadow-2xl">
-                            <a href="https://www.instagram.com/p/DUqlGELjeIQ/" target="_blank" class="block w-full h-full relative">
-                                <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682751/1cbbcb8d-83a7-4255-a2a9-8e7d08d95a81.png" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 5">
-                                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
-                                        <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
-                                    </div>
-                                </div>
-                                <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
-                                    <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
-                                    <span class="text-white font-semibold text-sm">Ver no Instagram</span>
-                                </div>
-                            </a>
-                        </div>
-                    </div>
-                    <div class="swiper-pagination mt-4"></div>
-                </div>
+<main class="flex-grow flex flex-col justify-center px-4 py-8 md:py-12">
+    <div class="max-w-6xl mx-auto w-full">
+
+        <div class="w-full mb-16 animate-fade-in reveal">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-slate-800">O que rola nas Redes</h2>
+                <p class="text-slate-500 text-sm mt-1">Dê o play e veja os bastidores na prática</p>
             </div>
+            
+            <div class="swiper mySwiper">
+                <div class="swiper-wrapper">
+                    
+                    <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                        <a href="[https://www.instagram.com/p/DVEnv5CksuL/](https://www.instagram.com/p/DVEnv5CksuL/)" target="_blank" class="block w-full h-full relative">
+                            <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771802853/1fb54cc7-06b3-4f44-8624-b01641869b49.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771802853/1fb54cc7-06b3-4f44-8624-b01641869b49.png)" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 1">
+                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                    <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                </div>
+                            </div>
+                            <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                        <a href="[https://www.instagram.com/p/DU88pUtEgfy/](https://www.instagram.com/p/DU88pUtEgfy/)" target="_blank" class="block w-full h-full relative">
+                            <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682592/d423c866-c241-4469-9028-e9958b20cc4e.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682592/d423c866-c241-4469-9028-e9958b20cc4e.png)" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 2">
+                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                    <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                </div>
+                            </div>
+                            <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                        <a href="[https://www.instagram.com/p/DU3KVWJjWsf/](https://www.instagram.com/p/DU3KVWJjWsf/)" target="_blank" class="block w-full h-full relative">
+                            <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682717/70ddbd36-f003-42a2-94d1-cae9c9ab7a0e.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682717/70ddbd36-f003-42a2-94d1-cae9c9ab7a0e.png)" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 3">
+                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                    <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                </div>
+                            </div>
+                            <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                            </div>
+                        </a>
+                    </div>
+                    
+                    <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                        <a href="[https://www.instagram.com/p/DUlWUyajblf/](https://www.instagram.com/p/DUlWUyajblf/)" target="_blank" class="block w-full h-full relative">
+                            <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682751/1cbbcb8d-83a7-4255-a2a9-8e7d08d95a81.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682751/1cbbcb8d-83a7-4255-a2a9-8e7d08d95a81.png)" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 4">
+                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                    <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                </div>
+                            </div>
+                            <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                            </div>
+                        </a>
+                    </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[550px]">
+                    <div class="swiper-slide bg-slate-900 group shadow-2xl">
+                        <a href="[https://www.instagram.com/p/DUqlGELjeIQ/](https://www.instagram.com/p/DUqlGELjeIQ/)" target="_blank" class="block w-full h-full relative">
+                            <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682751/1cbbcb8d-83a7-4255-a2a9-8e7d08d95a81.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682751/1cbbcb8d-83a7-4255-a2a9-8e7d08d95a81.png)" class="w-full h-full object-cover opacity-70 group-hover:opacity-50 transition-opacity" alt="Instagram Video 5">
+                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80"></div>
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="w-16 h-16 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg border border-white/20">
+                                    <i data-lucide="play" class="w-8 h-8 fill-current ml-1"></i>
+                                </div>
+                            </div>
+                            <div class="absolute bottom-6 left-6 right-6 flex items-center gap-2">
+                                <i data-lucide="instagram" class="w-5 h-5 text-white"></i>
+                                <span class="text-white font-semibold text-sm">Ver no Instagram</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                <div class="swiper-pagination mt-4"></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[550px]">
+            
+            <a href="[https://leanttro.com/tecnologia/](https://leanttro.com/tecnologia/)" class="group relative col-span-1 md:col-span-7 rounded-3xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01] bg-slate-900 flex flex-col justify-end p-8 md:p-12 text-white border border-slate-800 reveal">
                 
-                <a href="https://leanttro.com/tecnologia/" class="group relative col-span-1 md:col-span-7 rounded-3xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01] bg-slate-900 flex flex-col justify-end p-8 md:p-12 text-white border border-slate-800 reveal">
+                <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#0f0518] to-black z-0"></div>
+                <div class="absolute -top-20 -right-20 w-96 h-96 bg-purple-600 rounded-full mix-blend-screen filter blur-[100px] opacity-20 animate-pulse-slow"></div>
+                <div class="absolute bottom-0 left-0 w-full h-full bg-[url('[https://www.transparenttextures.com/patterns/cubes.png](https://www.transparenttextures.com/patterns/cubes.png)')] opacity-5 z-0"></div>
+
+                <div class="relative z-10 space-y-4">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-wider text-purple-300 backdrop-blur-sm">
+                        <i data-lucide="cpu" class="w-3 h-3"></i> Software House
+                    </div>
                     
-                    <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#0f0518] to-black z-0"></div>
-                    <div class="absolute -top-20 -right-20 w-96 h-96 bg-purple-600 rounded-full mix-blend-screen filter blur-[100px] opacity-20 animate-pulse-slow"></div>
-                    <div class="absolute bottom-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 z-0"></div>
-
-                    <div class="relative z-10 space-y-4">
-                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-wider text-purple-300 backdrop-blur-sm">
-                            <i data-lucide="cpu" class="w-3 h-3"></i> Software House
-                        </div>
-                        
-                        <h2 class="text-3xl md:text-5xl font-bold tracking-tight">Leanttro Tech</h2>
-                        <p class="text-slate-400 max-w-md text-sm md:text-base leading-relaxed">
-                            Desenvolvimento de Sites, Apps, SaaS e Automação com Inteligência Artificial. Transformamos processos complexos em código limpo.
-                        </p>
-                        
-                        <div class="pt-4">
-                            <span class="inline-flex items-center text-white font-bold bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl transition-all shadow-lg shadow-purple-900/20 group-hover:pl-8">
-                                Conhecer Soluções <i data-lucide="arrow-right" class="w-5 h-5 ml-2"></i>
-                            </span>
-                        </div>
-                    </div>
-
-                    <i data-lucide="terminal-square" class="absolute top-10 right-10 text-white/5 w-32 h-32 group-hover:rotate-12 transition-transform duration-700"></i>
-                </a>
-
-                <a href="https://www.leanttro.com/presentes" class="group relative col-span-1 md:col-span-5 rounded-3xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01] bg-gray-100 flex flex-col justify-between p-8 md:p-10 text-white border border-gray-200 reveal transition-delay-100">
+                    <h2 class="text-3xl md:text-5xl font-bold tracking-tight">Leanttro Tech</h2>
+                    <p class="text-slate-400 max-w-md text-sm md:text-base leading-relaxed">
+                        Desenvolvimento de Sites, Apps, SaaS e Automação com Inteligência Artificial. Transformamos processos complexos em código limpo.
+                    </p>
                     
-                    <div class="absolute inset-0 z-0">
-                        <img src="https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682936/Modern_Red_Car_Magazine_Cover_isigdn.png" 
-                             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                             alt="Leanttro Gifts">
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
-                    </div>
-
-                    <div class="relative z-10">
-                         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-white">
-                            <i data-lucide="gift" class="w-3 h-3"></i> Loja Online
-                        </div>
-                    </div>
-
-                    <div class="relative z-10 mt-auto text-right md:text-left">
-                        <h2 class="text-3xl md:text-4xl font-bold mb-2">Leanttro Gifts</h2>
-                        <p class="text-gray-200 text-sm md:text-base leading-tight font-medium mb-4">
-                            Kits corporativos premium e personalização a laser.
-                        </p>
-                        <span class="inline-flex items-center text-white text-sm font-bold border-b border-white pb-0.5 hover:text-purple-300 hover:border-purple-300 transition-colors">
-                            Ver Catálogo <i data-lucide="shopping-bag" class="w-4 h-4 ml-2"></i>
+                    <div class="pt-4">
+                        <span class="inline-flex items-center text-white font-bold bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-xl transition-all shadow-lg shadow-purple-900/20 group-hover:pl-8">
+                            Conhecer Soluções <i data-lucide="arrow-right" class="w-5 h-5 ml-2"></i>
                         </span>
                     </div>
-                </a>
-
-            </div>
-
-            <div class="mt-6 grid grid-cols-1 animate-fade-in reveal transition-delay-200">
-                <a href="/qrcodebrindes" class="relative w-full rounded-2xl bg-white border border-gray-200 p-6 md:p-8 flex flex-col md:flex-row items-center justify-between hover:border-purple-500 hover:shadow-xl hover:shadow-purple-500/10 transition-all group overflow-hidden">
-                    
-                    <div class="flex items-center gap-6 relative z-10 mb-4 md:mb-0">
-                        <div class="p-4 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                            <i data-lucide="qr-code" class="w-8 h-8"></i>
-                        </div>
-                        <div class="text-center md:text-left">
-                            <h3 class="text-xl font-bold text-slate-800">Identidade Digital (SOS & QR Codes)</h3>
-                            <p class="text-slate-500 text-sm">Nossa tecnologia conectando objetos físicos a dados digitais.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center gap-2 px-6 py-3 bg-slate-50 rounded-xl text-sm font-bold text-slate-700 group-hover:bg-purple-50 group-hover:text-purple-700 transition-colors">
-                        Conhecer Projetos <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                    </div>
-                </a>
-            </div>
-
-        </div>
-    </main>
-
-    {% if produtos %}
-    <section class="py-16 bg-white border-t border-gray-100">
-        <div class="max-w-6xl mx-auto px-6">
-            <div class="flex justify-between items-end mb-8">
-                <div>
-                    <h2 class="text-2xl font-bold text-slate-900">Destaques da Loja</h2>
-                    <p class="text-slate-500 text-sm">Os produtos mais vendidos da semana</p>
                 </div>
-                <a href="https://www.leanttro.com/presentes" class="text-purple-600 font-bold text-sm hover:underline">Ver todos</a>
-            </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                {% for prod in produtos[:4] %}
-                <a href="https://www.leanttro.com/presentes" class="group block">
-                    <div class="relative bg-gray-50 rounded-2xl overflow-hidden aspect-square mb-4">
-                        <img src="{{ prod.imagem }}" alt="{{ prod.nome }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                         {% if prod.urgencia == 'Alta' %}
-                        <div class="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">
-                            Últimas Unidades
-                        </div>
-                        {% endif %}
+                <i data-lucide="terminal-square" class="absolute top-10 right-10 text-white/5 w-32 h-32 group-hover:rotate-12 transition-transform duration-700"></i>
+            </a>
+
+            <a href="[https://www.leanttro.com/presentes](https://www.leanttro.com/presentes)" class="group relative col-span-1 md:col-span-5 rounded-3xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01] bg-gray-100 flex flex-col justify-between p-8 md:p-10 text-white border border-gray-200 reveal transition-delay-100">
+                
+                <div class="absolute inset-0 z-0">
+                    <img src="[https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682936/Modern_Red_Car_Magazine_Cover_isigdn.png](https://res.cloudinary.com/dzcaxmbjn/image/upload/v1771682936/Modern_Red_Car_Magazine_Cover_isigdn.png)" 
+                         class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                         alt="Leanttro Gifts">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                </div>
+
+                <div class="relative z-10">
+                     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-xs font-bold uppercase tracking-wider text-white">
+                        <i data-lucide="gift" class="w-3 h-3"></i> Loja Online
                     </div>
-                    <h3 class="font-bold text-slate-800 group-hover:text-purple-600 transition-colors line-clamp-1">{{ prod.nome }}</h3>
-                    <p class="text-slate-500 text-sm">
-                        {% if prod.preco %}R$ {{ "%.2f"|format(prod.preco) }}{% else %}Consulte{% endif %}
+                </div>
+
+                <div class="relative z-10 mt-auto text-right md:text-left">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-2">Leanttro Gifts</h2>
+                    <p class="text-gray-200 text-sm md:text-base leading-tight font-medium mb-4">
+                        Kits corporativos premium e personalização a laser.
                     </p>
-                </a>
-                {% endfor %}
-            </div>
+                    <span class="inline-flex items-center text-white text-sm font-bold border-b border-white pb-0.5 hover:text-purple-300 hover:border-purple-300 transition-colors">
+                        Ver Catálogo <i data-lucide="shopping-bag" class="w-4 h-4 ml-2"></i>
+                    </span>
+                </div>
+            </a>
+
         </div>
-    </section>
-    {% endif %}
 
-    <footer class="bg-white border-t border-gray-100 py-8 px-6 mt-auto">
-        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
-            <p class="text-xs text-gray-400 font-medium">
-                © 2026 Leanttro Ecosystem. São Paulo, Brasil. CNPJ: 57.996.112/0001-66
-            </p>
-            <div class="flex gap-4">
-                <a href="#" class="text-xs text-gray-400 hover:text-brand-purple transition-colors">Termos de Uso</a>
-                <a href="#" class="text-xs text-gray-400 hover:text-brand-purple transition-colors">Privacidade</a>
-            </div>
+        <div class="mt-6 grid grid-cols-1 animate-fade-in reveal transition-delay-200">
+            <a href="/qrcodebrindes" class="relative w-full rounded-2xl bg-white border border-gray-200 p-6 md:p-8 flex flex-col md:flex-row items-center justify-between hover:border-purple-500 hover:shadow-xl hover:shadow-purple-500/10 transition-all group overflow-hidden">
+                
+                <div class="flex items-center gap-6 relative z-10 mb-4 md:mb-0">
+                    <div class="p-4 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                        <i data-lucide="qr-code" class="w-8 h-8"></i>
+                    </div>
+                    <div class="text-center md:text-left">
+                        <h3 class="text-xl font-bold text-slate-800">Identidade Digital (SOS & QR Codes)</h3>
+                        <p class="text-slate-500 text-sm">Nossa tecnologia conectando objetos físicos a dados digitais.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2 px-6 py-3 bg-slate-50 rounded-xl text-sm font-bold text-slate-700 group-hover:bg-purple-50 group-hover:text-purple-700 transition-colors">
+                    Conhecer Projetos <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </div>
+            </a>
         </div>
-    </footer>
 
-    <a href="https://wa.me/{{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="fixed bottom-6 right-6 bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 hover:shadow-[#25D366]/30 transition-all z-50 flex items-center justify-center group">
-        <i data-lucide="message-circle" class="w-8 h-8"></i>
-        <span class="absolute right-full mr-4 bg-white text-slate-800 text-sm font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg pointer-events-none">Falar com Lelis</span>
-    </a>
+    </div>
+</main>
 
-    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
-    <script>
-        lucide.createIcons();
+{% if produtos %}
+<section class="py-16 bg-white border-t border-gray-100">
+    <div class="max-w-6xl mx-auto px-6">
+        <div class="flex justify-between items-end mb-8">
+            <div>
+                <h2 class="text-2xl font-bold text-slate-900">Destaques da Loja</h2>
+                <p class="text-slate-500 text-sm">Os produtos mais vendidos da semana</p>
+            </div>
+            <a href="[https://www.leanttro.com/presentes](https://www.leanttro.com/presentes)" class="text-purple-600 font-bold text-sm hover:underline">Ver todos</a>
+        </div>
 
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('active');
-                }
-            });
-        }, { threshold: 0.1 });
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+            {% for prod in produtos[:4] %}
+            <a href="[https://www.leanttro.com/presentes](https://www.leanttro.com/presentes)" class="group block">
+                <div class="relative bg-gray-50 rounded-2xl overflow-hidden aspect-square mb-4">
+                    <img src="{{ prod.imagem }}" alt="{{ prod.nome }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                     {% if prod.urgencia == 'Alta' %}
+                    <div class="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">
+                        Últimas Unidades
+                    </div>
+                    {% endif %}
+                </div>
+                <h3 class="font-bold text-slate-800 group-hover:text-purple-600 transition-colors line-clamp-1">{{ prod.nome }}</h3>
+                <p class="text-slate-500 text-sm">
+                    {% if prod.preco %}R$ {{ "%.2f"|format(prod.preco) }}{% else %}Consulte{% endif %}
+                </p>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
 
-        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+<footer class="bg-white border-t border-gray-100 py-8 px-6 mt-auto">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
+        <p class="text-xs text-gray-400 font-medium">
+            © 2026 Leanttro Ecosystem. São Paulo, Brasil. CNPJ: 57.996.112/0001-66
+        </p>
+        <div class="flex gap-4">
+            <a href="#" class="text-xs text-gray-400 hover:text-brand-purple transition-colors">Termos de Uso</a>
+            <a href="#" class="text-xs text-gray-400 hover:text-brand-purple transition-colors">Privacidade</a>
+        </div>
+    </div>
+</footer>
 
-        var swiper = new Swiper(".mySwiper", {
-            effect: "coverflow",
-            grabCursor: true,
-            centeredSlides: true,
-            slidesPerView: "auto",
-            initialSlide: 0,
-            loop: true,
-            coverflowEffect: {
-                rotate: 20,
-                stretch: 0,
-                depth: 150,
-                modifier: 1,
-                slideShadows: true,
-            },
-            pagination: {
-                el: ".swiper-pagination",
-                clickable: true,
-            },
-            autoplay: {
-                delay: 4000,
-                disableOnInteraction: false,
+<a href="[https://wa.me/](https://wa.me/){{ loja.whatsapp if loja and loja.whatsapp else '5511913324827' }}" target="_blank" class="fixed bottom-6 right-6 bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 hover:shadow-[#25D366]/30 transition-all z-50 flex items-center justify-center group">
+    <i data-lucide="message-circle" class="w-8 h-8"></i>
+    <span class="absolute right-full mr-4 bg-white text-slate-800 text-sm font-bold px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg pointer-events-none">Falar com Lelis</span>
+</a>
+
+<script src="[https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js](https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js)"></script>
+<script>
+    lucide.createIcons();
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('active');
             }
         });
-    </script>
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    var swiper = new Swiper(".mySwiper", {
+        effect: "coverflow",
+        grabCursor: true,
+        centeredSlides: true,
+        slidesPerView: "auto",
+        initialSlide: 0,
+        loop: true,
+        coverflowEffect: {
+            rotate: 20,
+            stretch: 0,
+            depth: 150,
+            modifier: 1,
+            slideShadows: true,
+        },
+        pagination: {
+            el: ".swiper-pagination",
+            clickable: true,
+        },
+        autoplay: {
+            delay: 4000,
+            disableOnInteraction: false,
+        }
+    });
+</script>
 </body>
 </html>
